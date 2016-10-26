@@ -20,6 +20,51 @@ except ImportError:
 from dphutils import fft_pad
 
 
+def _prep_img_and_psf(image, psf):
+    """Ensure that image and psf have the same size"""
+    image = image.astype(np.float)
+    psf = psf.astype(np.float)
+    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
+                                    " of dimensions")
+    psf_norm = psf / psf.sum()
+    if psf_norm.shape != image.shape:
+        # its been assumed that the background of the psf has already been removed
+        psf_norm = fft_pad(psf_norm, image.shape, mode='constant')
+    assert psf_norm.shape == image.shape
+    return image, psf_norm
+
+
+def wiener_filter(image, psf, reg):
+    """Wiener Deconvolution
+    
+    Parameters
+    ----------
+    image : ndarray
+       Input degraded image (can be N dimensional).
+    psf : ndarray
+       The point spread function.
+    reg : float
+        The regularization parameter, this is in place of the SNR
+        which in most cases isn't known as a function of frequency
+
+    Returns
+    -------
+    im_deconv : ndarray
+       The deconvolved image.
+
+    Notes
+    -----
+    Even though the SNR is not usually known the sharp drop of OTF's
+    at the band limit usually mean that simply estimating the regularization
+    is sufficient.
+    """
+    image, psf = _prep_img_and_psf(image, psf)
+    otf = rfftn(ifftshift(psf_norm))
+    filt = np.conj(otf) / (abs(otf)**2 + reg**2)
+    im_deconv = np.irfftn(filt * rfftn(ifftshift(image)), image.shape)
+    return im_deconv
+
+
 def richardson_lucy(image, psf, iterations=10, prediction_order=2):
     """
     Richardson-Lucy deconvolution.
@@ -53,14 +98,8 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=2):
     """
     # Stolen from the dev branch of skimage because stable branch is slow
     # checked against matlab on 20160805 and agrees to within machine precision
-    image = image.astype(np.float)
-    psf = psf.astype(np.float)
-    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
-                                    " of dimensions")
-    psf_norm = psf / psf.sum()
-    if psf_norm.shape != image.shape:
-        psf_norm = fft_pad(psf_norm, image.shape, mode='constant')
-    assert psf_norm.shape == image.shape
+    image, psf = _prep_img_and_psf(image, psf)
+    otf = rfftn(psf)
     # initialize variable for iterations
     # previous estimate
     u_tm1 = None
@@ -68,8 +107,6 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=2):
     u_t = image
     # previous difference
     g_tm1 = None
-    # below needs to be normalized.
-    otf = rfftn(ifftshift(psf_norm))
     for i in range(iterations):
         # call the update function
         u_tp1 = rl_core(image, otf, u_t)
@@ -80,8 +117,10 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=2):
             g_tm2 = g_tm1
             g_tm1 = u_tp1 - u_t
             if i > 2:
-                u_tp1 = rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
+                temp = rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
                                   prediction_order)
+                if temp is not None:
+                    u_tp1 = temp
         # enure positivity
         u_tp1[u_tp1 < 0] = 0
         # update estimate
@@ -112,28 +151,27 @@ def rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
         else:
             h2_t = 0
         u_tp1 = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
-    return u_tp1
+        return u_tp1
+    else:
+        return None
 
 
 if __name__ == '__main__':
     from skimage.data import moon
-    from dphutils import richardson_lucy as rl2
     from skimage.color import rgb2grey
-    from scipy.ndimage import convolve
+    from scipy.signal import fftconvolve
     from matplotlib import pyplot as plt
+    plt.rcParams["image.cmap"] = "Greys_r"
     image = rgb2grey(moon()).astype(float)
-    x = np.linspace(-4, 4, 33)
+    x = np.linspace(-4, 4, 64)
     xx, yy = np.meshgrid(x, x)
     psf = np.exp(-(xx**2 + yy**2))
-    blur_image = convolve(image, psf)
-    deblurred_image = richardson_lucy(blur_image, psf, 10, prediction_order=False)
-    deblurred_image2 = rl2(blur_image, psf, 10, prediction_order=False)
-    fig, axs = plt.subplots(2, 3)
+    blur_image = fftconvolve(image, psf, "same")
+    deblurred_image = richardson_lucy(blur_image, psf, 10, False)
+    fig, axs = plt.subplots(2, 2)
     axs.shape = (-1, )
     axs[0].matshow(image)
     axs[1].matshow(psf)
     axs[2].matshow(blur_image)
     axs[3].matshow(deblurred_image)
-    axs[4].matshow(deblurred_image2)
-    axs[5].hist((deblurred_image- deblurred_image2).ravel())
     plt.show()
