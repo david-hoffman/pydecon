@@ -57,85 +57,83 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=2):
     psf = psf.astype(np.float)
     assert psf.ndim == image.ndim, ("image and psf do not have the same number"
                                     " of dimensions")
-    # Build the dictionary to pass around and update
     psf_norm = psf / psf.sum()
     if psf_norm.shape != image.shape:
         psf_norm = fft_pad(psf_norm, image.shape, mode='constant')
-    u_tm2 = None
+    assert psf_norm.shape == image.shape
+    # initialize variable for iterations
+    # previous estimate
     u_tm1 = None
-    g_tm2 = None
+    # current estimate
+    u_t = image
+    # previous difference
     g_tm1 = None
-    u_t = None
-    y_t = image
     # below needs to be normalized.
     otf = rfftn(ifftshift(psf_norm))
-
     for i in range(iterations):
         # call the update function
-        # make mirror psf
-        # calculate RL iteration using the predicted step (y_t)
-        reblur = np.real(irfftn(otf * rfftn(y_t)))
-        # assert (reblur > eps).all(), 'Reblur 0 or negative'
-        im_ratio = image / reblur
-        # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-        estimate = np.real(irfftn(np.conj(otf) * rfftn(im_ratio)))
-        # assert (estimate > eps).all(), 'im_ratio 0 or negative'
-        u_tp1 = y_t * estimate
-
-        # enforce non-negativity
-        u_tp1[u_tp1 < 0] = 0
-
+        u_tp1 = rl_core(image, otf, u_t)
         # update
-        u_tm2 = u_tm1
-        u_tm1 = u_t
-        u_t = u_tp1
-        g_tm2 = g_tm1
-        g_tm1 = u_tp1 - y_t
-        # initialize alpha to zero
-        alpha = 0
-        # run through the specified iterations
-        if i > 1:
-            # calculate alpha according to 2
-            alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
-
-            alpha = max(min(alpha, 1), 0)
-            if not np.isfinite(alpha):
-                print(alpha)
-                alpha = 0
-            assert alpha >= 0, alpha
-            assert alpha <= 1, alpha
-
-        # if alpha is positive calculate predicted step
-        if alpha != 0:
-            if prediction_order > 0:
-                # first order correction
-                h1_t = u_t - u_tm1
-                if prediction_order > 1:
-                    # second order correction
-                    h2_t = (u_t - 2 * u_tm1 + u_tm2)
-                else:
-                    h2_t = 0
-            else:
-                h1_t = 0
-        else:
-            h2_t = 0
-            h1_t = 0
-
-        y_t = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
+        if prediction_order:
+            u_tm2 = u_tm1
+            u_tm1 = u_t
+            g_tm2 = g_tm1
+            g_tm1 = u_tp1 - u_t
+            if i > 2:
+                u_tp1 = rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
+                                  prediction_order)
         # enure positivity
-        y_t[y_t < 0] = 0
-
-    im_deconv = u_t
-
-    return im_deconv
+        u_tp1[u_tp1 < 0] = 0
+        # update estimate
+        u_t = u_tp1
+    # return final estimate
+    return u_tp1
 
 
 def rl_core(image, otf, y_t):
     """The core update step of the RL algorithm"""
-    reblur = irfftn(otf * rfftn(y_t))
-    # assert (reblur > eps).all(), 'Reblur 0 or negative'
+    reblur = irfftn(otf * rfftn(y_t), y_t.shape)
     im_ratio = image / reblur
-    # assert (im_ratio > eps).all(), 'im_ratio 0 or negative'
-    estimate = np.real(irfftn(np.conj(otf) * rfftn(im_ratio)))
-    # assert (estimate > eps).all(), 'im_ratio 0 or negative'
+    estimate = irfftn(np.conj(otf) * rfftn(im_ratio), im_ratio.shape)
     return y_t * estimate
+
+
+def rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
+    """Biggs-Andrews Acceleration"""
+    alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
+    alpha = max(min(alpha, 1), 0)
+    # if alpha is positive calculate predicted step
+    if alpha:
+        # first order correction
+        h1_t = u_t - u_tm1
+        if prediction_order > 1:
+            # second order correction
+            h2_t = (u_t - 2 * u_tm1 + u_tm2)
+        else:
+            h2_t = 0
+        u_tp1 = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
+    return u_tp1
+
+
+if __name__ == '__main__':
+    from skimage.data import moon
+    from dphutils import richardson_lucy as rl2
+    from skimage.color import rgb2grey
+    from scipy.ndimage import convolve
+    from matplotlib import pyplot as plt
+    image = rgb2grey(moon()).astype(float)
+    x = np.linspace(-4, 4, 33)
+    xx, yy = np.meshgrid(x, x)
+    psf = np.exp(-(xx**2 + yy**2))
+    blur_image = convolve(image, psf)
+    deblurred_image = richardson_lucy(blur_image, psf, 10, prediction_order=False)
+    deblurred_image2 = rl2(blur_image, psf, 10, prediction_order=False)
+    fig, axs = plt.subplots(2, 3)
+    axs.shape = (-1, )
+    axs[0].matshow(image)
+    axs[1].matshow(psf)
+    axs[2].matshow(blur_image)
+    axs[3].matshow(deblurred_image)
+    axs[4].matshow(deblurred_image2)
+    axs[5].hist((deblurred_image- deblurred_image2).ravel())
+    plt.show()
