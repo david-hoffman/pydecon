@@ -62,7 +62,7 @@ def _rl_core_accurate(image, psf, u_t):
     return u_t * estimate
 
 
-def _rl_core_matlab(image, otf, u_t):
+def _rl_core_matlab(image, otf, psf, u_t):
     """The core update step of the RL algorithm
 
     This is a fast but inaccurate version modeled on matlab's version"""
@@ -175,9 +175,9 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         if psf.shape != image.shape:
             # its been assumed that the background of the psf has already been
             # removed and that the psf has already been centered
-            psf = fft_pad(psf, image.shape, mode='constant')
-        otf = rfftn(ifftshift(psf))
-        core_dict = dict(image=image, otf=otf)
+            psf_pad = fft_pad(psf, image.shape, mode='constant')
+        otf = rfftn(ifftshift(psf_pad))
+        core_dict = dict(image=image, otf=otf, psf=psf)
     else:
         raise TypeError("{} is not a valid core".format(core))
     # initialize variable for iterations
