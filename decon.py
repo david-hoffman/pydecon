@@ -62,7 +62,7 @@ def _rl_core_accurate(image, psf, u_t):
     return u_t * estimate
 
 
-def _rl_core_fast(image, otf, u_t):
+def _rl_core_matlab(image, otf, u_t):
     """The core update step of the RL algorithm
 
     This is a fast but inaccurate version modeled on matlab's version"""
@@ -126,7 +126,7 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
 
 
 def richardson_lucy(image, psf, iterations=10, prediction_order=1,
-                    core=_rl_core_fast_accurate, **kwargs):
+                    core=_rl_core_fast_accurate, init="mean", **kwargs):
     """
     Richardson-Lucy deconvolution.
 
@@ -169,24 +169,26 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
             image=image, otf=otf, iotf=iotf, fshape=fshape, fslice=fslice
         )
     elif core is _rl_core_accurate or core is _rl_core_direct:
-        core_dict = dict(
-            image=image, psf=otf
-        )
-    # elif core is _rl_core_fast:
-    #     image, pad_psf = _prep_img_and_psf(image, psf)
-    #     psfotf = rfftn(ifftshift(pad_psf))
-    # elif core is _rl_core_accurate:
-    #     image = image.astype(np.float)
-    #     psf = psf.astype(np.float)
-    #     psfotf = psf / psf.sum()
+        core_dict = dict(image=image, psf=psf)
+    elif core is _rl_core_matlab:
+        image, psf = _prep_img_and_psf(image, psf)
+        if psf.shape != image.shape:
+            # its been assumed that the background of the psf has already been
+            # removed and that the psf has already been centered
+            psf = fft_pad(psf, image.shape, mode='constant')
+        otf = rfftn(ifftshift(psf))
+        core_dict = dict(image=image, otf=otf)
     else:
         raise TypeError("{} is not a valid core".format(core))
     # initialize variable for iterations
     # previous estimate
     u_tm1 = None
-    # current estimate, for the initial estimate we use the mean of the data
-    # this promotes a smooth solution and helps to reduce noise.
-    core_dict["u_t"] = u_t = np.ones_like(image) * image.mean()
+    if init == "matlab":
+        core_dict["u_t"] = u_t = image
+    else:
+        # current estimate, for the initial estimate we use the mean of the
+        # data this promotes a smooth solution and helps to reduce noise.
+        core_dict["u_t"] = u_t = np.ones_like(image) * image.mean()
     # previous difference
     g_tm1 = None
     for i in range(iterations):
