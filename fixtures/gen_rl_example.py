@@ -13,6 +13,7 @@ import numpy as np
 from pyDecon.utils import _ensure_positive
 from scipy.ndimage import convolve
 from skimage.external import tifffile as tif
+from skimage.restoration import richardson_lucy as rl_skimage
 from pyDecon.decon import richardson_lucy as rl
 
 if __name__ == "__main__":
@@ -59,4 +60,10 @@ if __name__ == "__main__":
     # export wisdom
     pickle.dump(pyfftw.export_wisdom(), open("wisdom.p", "wb"))
     tif.imsave("decon image.tif", decon.astype(np.float32))
+    # decon with skimage
+    print("Deconvolving the data with skimage...", end="")
+    start = time.time()
+    decon_skimage = rl_skimage(blurred_noisy, psf, 10, False)
+    print("{:.3f} seconds".format(time.time() - start))
+    tif.imsave("decon skimage.tif", decon.astype(np.float32))
     print("finished!")

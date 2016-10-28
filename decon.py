@@ -18,42 +18,10 @@ except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn)
 from dphutils import fft_pad
+from .utils import _prep_img_and_psf, _ensure_positive
 import scipy.signal.signaltools as sig
 from scipy.signal import fftconvolve
 from scipy.ndimage import convolve
-
-
-def set_pyfftw_threads(threads=1):
-    """A utility to set the number of threads to use in pyfftw"""
-    raise NotImplementedError
-
-
-def _ensure_positive(data):
-    """Make sure data is positive and has no zeros
-
-    For numerical stability
-
-    If we realize that mutating data is not a problem
-    and that changing in place could lead to signifcant
-    speed ups we can lose the data.copy() line"""
-    # make a copy of the data
-    data = data.copy()
-    data[data <= 0] = np.finfo(data.dtype).resolution
-    return data
-
-
-def _prep_img_and_psf(image, psf):
-    """Ensure that image and psf have the same size"""
-    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
-                                    " of dimensions")
-    image = image.astype(np.float)
-    psf = psf.astype(np.float)
-    # normalize the kernel
-    psf /= psf.sum()
-    # need to make sure both image and PSF are totally positive.
-    image = _ensure_positive(image)
-    psf = _ensure_positive(psf)
-    return image, psf
 
 
 def _get_fshape_slice(image, psf):
@@ -76,8 +44,8 @@ def _rl_core_direct(image, psf, u_t):
     reblur = _ensure_positive(reblur)
     im_ratio = image / reblur
     # reverse slicing
-    s = slice(None, None, -1)
-    estimate = convolve(im_ratio, psf[(s, ) * psf.ndim], mode="reflect")
+    s = [slice(None, None, -1)] * psf.ndim
+    estimate = convolve(im_ratio, psf[s], mode="reflect")
     return u_t * estimate
 
 
@@ -85,28 +53,28 @@ def _rl_core_accurate(image, psf, u_t):
     """The core update step of the RL algorithm
 
     An accurate version that """
-    reblur = fftconvolve(y_t, psf, "same")
+    reblur = fftconvolve(u_t, psf, "same")
     reblur = _ensure_positive(reblur)
     im_ratio = image / reblur
     # reverse slicing
     s = slice(None, None, -1)
     estimate = fftconvolve(im_ratio, psf[(s, ) * psf.ndim], "same")
-    return y_t * estimate
+    return u_t * estimate
 
 
 def _rl_core_fast(image, otf, u_t):
     """The core update step of the RL algorithm
 
-    Fast version"""
-    reblur = irfftn(otf * rfftn(y_t), y_t.shape)
+    This is a fast but inaccurate version modeled on matlab's version"""
+    reblur = irfftn(otf * rfftn(u_t), u_t.shape)
     reblur[reblur <= 0] = np.finfo(reblur.dtype).resolution
     im_ratio = image / reblur
     estimate = irfftn(np.conj(otf) * rfftn(im_ratio), im_ratio.shape)
     # need to figure out a way to pass the psf shape
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
-            estimate = roll(estimate, 1, i)
-    return y_t * estimate
+            estimate = np.roll(estimate, 1, i)
+    return u_t * estimate
 
 
 def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
@@ -200,6 +168,10 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         core_dict = dict(
             image=image, otf=otf, iotf=iotf, fshape=fshape, fslice=fslice
         )
+    elif core is _rl_core_accurate or core is _rl_core_direct:
+        core_dict = dict(
+            image=image, psf=otf
+        )
     # elif core is _rl_core_fast:
     #     image, pad_psf = _prep_img_and_psf(image, psf)
     #     psfotf = rfftn(ifftshift(pad_psf))
@@ -278,21 +250,27 @@ def wiener_filter(image, psf, reg, **kwargs):
 
 
 if __name__ == '__main__':
-    from skimage.data import moon
+    from skimage.data import hubble_deep_field
     from skimage.color import rgb2grey
-    from scipy.signal import fftconvolve
     from matplotlib import pyplot as plt
     plt.rcParams["image.cmap"] = "Greys_r"
-    image = rgb2grey(moon()).astype(float)
+    np.random.seed(12345)
+    image = rgb2grey(hubble_deep_field())
+    image = image / image.max()
+    image *= 25.0
     x = np.linspace(-4, 4, 64)
     xx, yy = np.meshgrid(x, x)
-    psf = np.exp(-(xx**2 + yy**2))
-    blur_image = fftconvolve(image, psf, "same")
-    deblurred_image = richardson_lucy(blur_image, psf, 10, False)
-    fig, axs = plt.subplots(2, 2)
-    axs.shape = (-1, )
-    axs[0].matshow(image)
-    axs[1].matshow(psf)
-    axs[2].matshow(blur_image)
-    axs[3].matshow(deblurred_image)
+    psf = np.exp(-(xx**2 + yy**2)) * 100
+    blur_image = convolve(image, psf / psf.sum(), mode="reflect")
+    blur_image_noisy = np.random.poisson(blur_image)
+    psf_noisy = np.random.poisson(psf)
+    deblurred_image = richardson_lucy(blur_image_noisy,
+                                      psf_noisy / psf_noisy.sum(), 10, 1)
+    fig, axs = plt.subplots(3, 2, figsize=(10, 15))
+    titles = ("Image" ,"PSF", "Blurred Image", "Noisy PSF", "Noisy Image", "Deconvolved")
+    datas = (image, psf, blur_image, psf_noisy, blur_image_noisy, deblurred_image)
+    for ax, t, d in zip(axs.ravel(), titles, datas):
+        ax.matshow(d)
+        ax.set_title(t)
+
     plt.show()
