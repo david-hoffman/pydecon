@@ -18,6 +18,9 @@ except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn, fftfreq)
 from pyOTF.utils import remove_bg
+from peaks.peakfinder import PeakFinder
+from dphplotting import display_grid
+from dphutils import slice_maker
 
 
 def _make_kspace(data, res):
@@ -116,3 +119,110 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     # ifft
     cleaned_psf = np.real(fftshift(ifftn(ifftshift(otf))))
     return cleaned_psf
+
+
+class PSFFinder(object):
+    """Object to find and analyze subdiffractive emmitters"""
+
+    def __init__(self, stack, psfwidth=1.3, window_width=20, **kwargs):
+        """Analyze a z-stack of subdiffractive emmitters
+
+        Parameters
+        ----------
+        stack : ndarray
+
+        Kwargs
+        ------
+        psfwidth : float
+        window_width : int"""
+        self.stack = stack
+        self.peakfinder = PeakFinder(stack.max(0), psfwidth, **kwargs)
+        self.peakfinder.find_blobs()
+        self.all_blobs = self.peakfinder.blobs
+        self.window_width = window_width
+        self.find_psfs(2 * psfwidth)
+
+    def find_psfs(self, max_s=2.1, num_peaks=20):
+        """Function to find and fit blobs in the max intensity image
+
+        Blobs with the appropriate parameters are saved for further fitting.
+
+        Parameters
+        ----------
+        max_s: float
+            Reject all peaks with a fit width greater than this
+        num_peaks: int
+            The number of peaks to analyze further"""
+        window_width = self.window_width
+        # pull the PeakFinder object
+        my_PF = self.peakfinder
+        # find blobs
+        my_PF.find_blobs()
+        # prune blobs
+        my_PF.remove_edge_blobs(window_width)
+        my_PF.prune_blobs(window_width)
+        # fit blobs in max intensity
+        blobs_df = my_PF.fit_blobs(window_width)
+        # round to make sorting a little more meaningfull
+        blobs_df.SNR = blobs_df.dropna().SNR.round().astype(int)
+        # sort by SNR then sigma_x after filtering for unreasonably
+        # large blobs and reindex data frame here
+        new_blobs_df = blobs_df[
+            blobs_df.sigma_x < max_s
+        ].sort_values(
+            ['SNR', 'sigma_x'], ascending=[False, True]
+        ).reset_index(drop=True)
+        # set the internal state to the selected blobs
+        my_PF.blobs = new_blobs_df[
+            ['y0', 'x0', 'sigma_x', 'amp']
+        ].values.astype(int)
+        self.fits = new_blobs_df
+
+    def find_window(self, blob_num=0):
+        """Finds the biggest window distance."""
+        # pull all blobs
+        blobs = self.all_blobs
+        # three different cases
+        if not len(blobs):
+            # no blobs in window, raise hell
+            raise RuntimeError("No blobs found, can't find window")
+        else:
+            # TODO: this should be refactored to use KDTrees
+            # more than one blob find
+            best = np.round(
+                self.fits.iloc[blob_num][['y0', 'x0', 'sigma_x', 'amp']].values
+            ).astype(int)
+
+            def calc_r(blob1, blob2):
+                """Calc euclidean distance between blob1 and blob2"""
+                y1, x1, s1, a1 = blob1
+                y2, x2, s2, a2 = blob2
+                return np.sqrt((y1 - y2)**2 + (x1 - x2)**2)
+            # calc distances
+            r = np.array([calc_r(best, blob) for blob in blobs])
+            # find min distances
+            # remember that best is in blobs so 0 will be in the list
+            # find the next value
+            r.sort()
+            try:
+                r_min = r[1]
+            except IndexError:
+                # make r_min the size of the image
+                r_min = min(
+                    np.concatenate((np.array(self.stack.shape[1:3]) - best[:2],
+                                    best[:2]))
+                )
+            # now window size equals sqrt or this
+            win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
+
+        window = slice_maker(best[0], best[1], win_size)
+        self.window = window
+
+        return window
+
+    def plot_all_windows(self):
+        """Plot all the windows so that user can choose favorite"""
+        windows = [self.find_window(i) for i in range(len(self.fits))]
+        fig, axs = display_grid({i: self.peakfinder.data[win]
+                                 for i, win in enumerate(windows)})
+        return fig, axs
