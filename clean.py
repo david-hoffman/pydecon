@@ -40,6 +40,15 @@ def _make_xspace(data, res):
     return xtot, res
 
 
+def calc_infocus_psf(psf):
+    """Calculate the infocus psf using the projection-slice theorem.
+
+    https://en.wikipedia.org/wiki/Projection-slice_theorem"""
+    otf = fftshift(fftn(ifftshift(self.psf))).mean(0)
+    infocus_psf = np.real(fftshift(ifftn(ifftshift(otf))))
+    return infocus_psf
+
+
 def psf2dclean(psf, exp_kwargs, ns=4):
     """A function to clean up a 2d psf in both real space and frequency space
 
@@ -121,10 +130,10 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     return cleaned_psf
 
 
-class PSFFinder(object):
+class PSFFinder(PeakFinder):
     """Object to find and analyze subdiffractive emmitters"""
 
-    def __init__(self, stack, psfwidth=1.3, window_width=20, **kwargs):
+    def __init__(self, stack, psfwidth=1.3, window_width=20):
         """Analyze a z-stack of subdiffractive emmitters
 
         Parameters
@@ -135,10 +144,8 @@ class PSFFinder(object):
         ------
         psfwidth : float
         window_width : int"""
-        self.stack = stack
-        self.peakfinder = PeakFinder(stack.max(0), psfwidth, **kwargs)
-        self.peakfinder.find_blobs()
-        self.all_blobs = self.peakfinder.blobs
+        super().__init__(stack, psfwidth)
+        self.find_blobs()
         self.window_width = window_width
         self.find_psfs(2 * psfwidth)
 
@@ -154,15 +161,13 @@ class PSFFinder(object):
         num_peaks: int
             The number of peaks to analyze further"""
         window_width = self.window_width
-        # pull the PeakFinder object
-        my_PF = self.peakfinder
         # find blobs
-        my_PF.find_blobs()
+        self.find_blobs()
         # prune blobs
-        my_PF.remove_edge_blobs(window_width)
-        my_PF.prune_blobs(window_width)
+        self.remove_edge_blobs(window_width)
+        self.prune_blobs(window_width)
         # fit blobs in max intensity
-        blobs_df = my_PF.fit_blobs(window_width)
+        blobs_df = self.fit_blobs(window_width)
         # round to make sorting a little more meaningfull
         blobs_df.SNR = blobs_df.dropna().SNR.round().astype(int)
         # sort by SNR then sigma_x after filtering for unreasonably
@@ -173,7 +178,7 @@ class PSFFinder(object):
             ['SNR', 'sigma_x'], ascending=[False, True]
         ).reset_index(drop=True)
         # set the internal state to the selected blobs
-        my_PF.blobs = new_blobs_df[
+        self.blobs = new_blobs_df[
             ['y0', 'x0', 'sigma_x', 'amp']
         ].values.astype(int)
         self.fits = new_blobs_df
@@ -181,7 +186,7 @@ class PSFFinder(object):
     def find_window(self, blob_num=0):
         """Finds the biggest window distance."""
         # pull all blobs
-        blobs = self.all_blobs
+        blobs = self.blobs
         # three different cases
         if not len(blobs):
             # no blobs in window, raise hell
@@ -209,14 +214,13 @@ class PSFFinder(object):
             except IndexError:
                 # make r_min the size of the image
                 r_min = min(
-                    np.concatenate((np.array(self.stack.shape[1:3]) - best[:2],
+                    np.concatenate((np.array(self.data.shape) - best[:2],
                                     best[:2]))
                 )
             # now window size equals sqrt or this
             win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
 
         window = slice_maker(best[0], best[1], win_size)
-        self.window = window
 
         return window
 
