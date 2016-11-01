@@ -230,3 +230,88 @@ class PSFFinder(PeakFinder):
         fig, axs = display_grid({i: self.peakfinder.data[win]
                                  for i, win in enumerate(windows)})
         return fig, axs
+
+
+class PSF2DProcessor(object):
+    """An object for processing 2D PSFs and OTFs from 3D stacks"""
+
+    def __init__(self, stack, na=0.85, pixsize=0.13,
+                 det_wl=0.585, **kwargs):
+        """Find PSFs and turn them into OTFs
+
+        Parameters
+        ----------
+        stack : ndarray
+        na : float
+        pixsize : float
+        det_wl : float
+        """
+        # psfwidth = det_wl / 4 / na / pixsize
+        self.stack = stack
+        self.na = na
+        self.pixsize = pixsize
+        self.det_wl = det_wl
+
+
+class PSF3DProcessor(object):
+    """An object designed to turn a 3D SIM PSF into a 3D SIM radially averaged
+    OTF"""
+
+    def __init__(self, data, exp_args):
+        """Initialize the object, assumes data is already organized as:
+        directions, phases, z, y, x
+
+        exp_args holds all the experimental parameters (should be dict):
+        wl, na, ni, zres, rres"""
+        # set up internal data
+        self.data = data
+        # extract experimental args
+        self.exp_args = self.wl, na, ni, dz, dr = exp_args
+        # get ndirs etc
+        self.ndirs, self.nphases, self.nz, self.ny, self.nx = data.shape
+        # remove background
+        self.data_nobg = data_nobg = remove_bg(self.data, 1.0)
+        # average along directions and phases to make widefield psf
+        self.conv_psf = conv_psf = data_nobg.mean((0, 1))
+        # separate data
+        sep_data = self.separate_data()
+        # center the data using the conventional psf center
+        psf_max_loc = np.unravel_index(conv_psf.argmax(), conv_psf.shape)
+        cent_data = center_data(sep_data, (None, ) + psf_max_loc)
+        # take rfft along spatial dimensions (get seperated OTFs)
+        # last fftshift isn't performed along las axis, because it's the real
+        # axis
+        self.cent_data_fft_sep = fftshift(rfftn(ifftshift(
+            cent_data, axes=(1, 2, 3)), axes=(1, 2, 3)), axes=(1, 2)
+        )
+        self.avg_and_mask()
+        # get spacings and save for later
+        kzz, krr, self.dkz, self.dkr = _kspace_coords(dz, dr, self.masks[0].shape)
+        # average bands (hard coded for convenience)
+        corrected_profs = np.array([
+            correct_phase_angle(b, m)
+            for b, m in zip(self.masked_rad_profs, self.masks)
+        ])
+        band0 = corrected_profs[0]
+        band1 = (corrected_profs[1] + corrected_profs[2]) / 2
+        band2 = (corrected_profs[3] + corrected_profs[4]) / 2
+        self.bands = np.array((band0, band1, band2))
+        self.bands = np.array([average_pm_kz(band) for band in self.bands])
+
+    def avg_and_mask(self):
+        # radially average the OTFs
+        # for each otf in the seperated data and for each kz plane calculate
+        # the radial average center the radial average at 0 for last axis
+        # because of real fft
+        center = ((self.ny + 1) // 2, 0)
+        extent = self.nx // 2 + 1
+        self.r_3D = r_3D = np.array([
+            [radial_profile(o, center)[0][:extent]
+             for o in z] for z in self.cent_data_fft_sep
+        ])
+        # mask OTFs and retrieve masks
+        self.masked_rad_profs, masks = np.swapaxes(
+            np.array([mask_rad_prof(r, self.exp_args) for r in r_3D]), 0, 1
+        )
+        # convert masks to bool (they've been cast to complex in the above)
+        self.masks = masks.astype(bool)
