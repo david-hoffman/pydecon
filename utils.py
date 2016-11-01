@@ -30,7 +30,8 @@ def _ensure_positive(data):
 
 
 def _prep_img_and_psf(image, psf):
-    """Ensure that image and psf have the same size"""
+    """Do basic data checking, convert data to float, normalize psf and make
+    sure data are positive"""
     assert psf.ndim == image.ndim, ("image and psf do not have the same number"
                                     " of dimensions")
     image = image.astype(np.float)

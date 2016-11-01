@@ -17,9 +17,9 @@ try:
 except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn, fftfreq)
-from pyOTF.utils import remove_bg
+from pyOTF.utils import remove_bg, center_data
 from peaks.peakfinder import PeakFinder
-from dphplotting import display_grid
+from dphplotting import display_grid, mip, slice_plot
 from dphutils import slice_maker
 
 
@@ -44,11 +44,12 @@ def calc_infocus_psf(psf):
     """Calculate the infocus psf using the projection-slice theorem.
 
     https://en.wikipedia.org/wiki/Projection-slice_theorem"""
-    otf = fftshift(fftn(ifftshift(self.psf))).mean(0)
+    otf = fftshift(fftn(ifftshift(psf))).mean(0)
     infocus_psf = np.real(fftshift(ifftn(ifftshift(otf))))
     return infocus_psf
 
-
+# TODO: for both cleaning functions there should be an option to limit
+# the window size to the realspace mask.
 def psf2dclean(psf, exp_kwargs, ns=4):
     """A function to clean up a 2d psf in both real space and frequency space
 
@@ -103,6 +104,11 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     theta = np.arcsin(na / ni)
     # make a double sided cone
     mask = r - abs(z) * np.tan(theta) > ns * 0.45 * wl / (2 * na)
+    # zmax = zres * mask.shape[0] / 2
+    # width = ns * 0.45 * wl / (2 * na) + zmax * np.tan(theta)
+    # window = slice_maker(*(np.array(mask.shape[1:]) // 2), int(2 * width / res))
+    # print(window)
+    # return mask, window
     cleaned_psf[mask] = 0
     # TODO: switch fft's to rfft's
     otf = fftshift(fftn(ifftshift(cleaned_psf)))
@@ -133,8 +139,11 @@ def psf3dclean(psf, exp_kwargs, ns=4):
 class PSFFinder(PeakFinder):
     """Object to find and analyze subdiffractive emmitters"""
 
-    def __init__(self, stack, psfwidth=1.3, window_width=20):
+    def __init__(self, data, psfwidth=1.3, window_width=20):
         """Analyze a z-stack of subdiffractive emmitters
+
+        This object will find sub-diffractive emmitters so that they
+        can be cleaned up and analyzed
 
         Parameters
         ----------
@@ -144,12 +153,12 @@ class PSFFinder(PeakFinder):
         ------
         psfwidth : float
         window_width : int"""
-        super().__init__(stack, psfwidth)
+        super().__init__(data, psfwidth)
         self.find_blobs()
         self.window_width = window_width
         self.find_psfs(2 * psfwidth)
 
-    def find_psfs(self, max_s=2.1, num_peaks=20):
+    def find_psfs(self, max_s=2.1):
         """Function to find and fit blobs in the max intensity image
 
         Blobs with the appropriate parameters are saved for further fitting.
@@ -227,16 +236,36 @@ class PSFFinder(PeakFinder):
     def plot_all_windows(self):
         """Plot all the windows so that user can choose favorite"""
         windows = [self.find_window(i) for i in range(len(self.fits))]
-        fig, axs = display_grid({i: self.peakfinder.data[win]
+        fig, axs = display_grid({i: self.data[win]
                                  for i, win in enumerate(windows)})
         return fig, axs
 
 
-class PSF2DProcessor(object):
+class PSFProcMethods(object):
+    """A class specifically designed to mixin to add methods"""
+
+    def _inspect(self, psf):
+        """"""
+        otf = fftshift(fftn(ifftshift(psf)))
+        mip(psf)
+        slice_plot(abs(otf))
+        slice_plot(np.angle(otf))
+
+    def inspect_psf(self, blob_num=0):
+        """Inspect the psf assoicated with blob_num"""
+        psf = self.get_psf(blob_num)
+        self._inspect(psf)
+
+    def inspect_psf_clean(self, blob_num=0):
+        """Inspect the psf assoicated with blob_num"""
+        psf = self.clean_psf(blob_num)
+        self._inspect(psf)
+
+
+class PSF2DProcessor(PSFProcMethods, PSFFinder):
     """An object for processing 2D PSFs and OTFs from 3D stacks"""
 
-    def __init__(self, stack, na=0.85, pixsize=0.13,
-                 det_wl=0.585, **kwargs):
+    def __init__(self, stack, wl=585, na=0.85, res=130, **kwargs):
         """Find PSFs and turn them into OTFs
 
         Parameters
@@ -246,72 +275,61 @@ class PSF2DProcessor(object):
         pixsize : float
         det_wl : float
         """
-        # psfwidth = det_wl / 4 / na / pixsize
-        self.stack = stack
+        assert stack.ndim == 3, "Stack is expected to be 3D"
+        psfwidth = wl / 4 / na / res
+        # use the max projection for peak finding
+        super().__init__(stack.max(0), psfwidth, **kwargs)
         self.na = na
-        self.pixsize = pixsize
-        self.det_wl = det_wl
+        self.res = res
+        self.wl = wl
+
+    def get_psf(self, blob_num=0):
+        """make a 2d psf"""
+        psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
+        psf3d_corr = center_data(remove_bg(psf3d, 1.0))
+        psf2d = calc_infocus_psf(psf3d_corr)
+        return psf2d
+
+    def clean_psf(self, blob_num, **kwargs):
+        """"""
+        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res)
+        psf = psf2dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
+        return psf
 
 
-class PSF3DProcessor(object):
-    """An object designed to turn a 3D SIM PSF into a 3D SIM radially averaged
-    OTF"""
+class PSF3DProcessor(PSFProcMethods, PSFFinder):
+    """An object for processing 2D PSFs and OTFs from 3D stacks"""
 
-    def __init__(self, data, exp_args):
-        """Initialize the object, assumes data is already organized as:
-        directions, phases, z, y, x
+    def __init__(self, stack, wl=585, na=0.85, ni=1.0, res=130, zres=250,
+                 **kwargs):
+        """Find PSFs and turn them into OTFs
 
-        exp_args holds all the experimental parameters (should be dict):
-        wl, na, ni, zres, rres"""
-        # set up internal data
-        self.data = data
-        # extract experimental args
-        self.exp_args = self.wl, na, ni, dz, dr = exp_args
-        # get ndirs etc
-        self.ndirs, self.nphases, self.nz, self.ny, self.nx = data.shape
-        # remove background
-        self.data_nobg = data_nobg = remove_bg(self.data, 1.0)
-        # average along directions and phases to make widefield psf
-        self.conv_psf = conv_psf = data_nobg.mean((0, 1))
-        # separate data
-        sep_data = self.separate_data()
-        # center the data using the conventional psf center
-        psf_max_loc = np.unravel_index(conv_psf.argmax(), conv_psf.shape)
-        cent_data = center_data(sep_data, (None, ) + psf_max_loc)
-        # take rfft along spatial dimensions (get seperated OTFs)
-        # last fftshift isn't performed along las axis, because it's the real
-        # axis
-        self.cent_data_fft_sep = fftshift(rfftn(ifftshift(
-            cent_data, axes=(1, 2, 3)), axes=(1, 2, 3)), axes=(1, 2)
-        )
-        self.avg_and_mask()
-        # get spacings and save for later
-        kzz, krr, self.dkz, self.dkr = _kspace_coords(dz, dr, self.masks[0].shape)
-        # average bands (hard coded for convenience)
-        corrected_profs = np.array([
-            correct_phase_angle(b, m)
-            for b, m in zip(self.masked_rad_profs, self.masks)
-        ])
-        band0 = corrected_profs[0]
-        band1 = (corrected_profs[1] + corrected_profs[2]) / 2
-        band2 = (corrected_profs[3] + corrected_profs[4]) / 2
-        self.bands = np.array((band0, band1, band2))
-        self.bands = np.array([average_pm_kz(band) for band in self.bands])
+        Parameters
+        ----------
+        stack : ndarray
+        na : float
+        pixsize : float
+        det_wl : float
+        """
+        assert stack.ndim == 3, "Stack is expected to be 3D"
+        psfwidth = wl / 4 / na / res
+        # use the max projection for peak finding
+        super().__init__(stack.max(0), psfwidth, **kwargs)
+        self.na = na
+        self.res = res
+        self.wl = wl
+        self.ni = ni
+        self.zres = zres
 
-    def avg_and_mask(self):
-        # radially average the OTFs
-        # for each otf in the seperated data and for each kz plane calculate
-        # the radial average center the radial average at 0 for last axis
-        # because of real fft
-        center = ((self.ny + 1) // 2, 0)
-        extent = self.nx // 2 + 1
-        self.r_3D = r_3D = np.array([
-            [radial_profile(o, center)[0][:extent]
-             for o in z] for z in self.cent_data_fft_sep
-        ])
-        # mask OTFs and retrieve masks
-        self.masked_rad_profs, masks = np.swapaxes(
-            np.array([mask_rad_prof(r, self.exp_args) for r in r_3D]), 0, 1
-        )
-        # convert masks to bool (they've been cast to complex in the above)
-        self.masks = masks.astype(bool)
+    def get_psf(self, blob_num=0):
+        """make a 2d psf"""
+        psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
+        psf3d_corr = center_data(remove_bg(psf3d, 1.0))
+        return psf3d_corr
+
+    def clean_psf(self, blob_num, **kwargs):
+        """"""
+        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res, ni=self.ni,
+                          zres=self.zres)
+        psf = psf3dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
+        return psf
