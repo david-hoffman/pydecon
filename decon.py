@@ -87,6 +87,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
     alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
     alpha = max(min(alpha, 1), 0)
     # if alpha is positive calculate predicted step
+    print("lambda = {:.3f}".format(alpha))
     if alpha:
         # first order correction
         h1_t = u_t - u_tm1
@@ -206,14 +207,10 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
     # previous difference
     g_tm1 = None
     for i in range(iterations):
-        print(i)
         if prediction_order:
-            if i > 2:
+            if i > 1:
                 u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
                                      prediction_order)
-            elif i > 1:
-                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
-                                     1)
         # update estimate and ensure positive
         core_dict["u_t"] = u_t = _ensure_positive(u_t)
         # call the update function
