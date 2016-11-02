@@ -67,13 +67,14 @@ def _rl_core_matlab(image, otf, psf, u_t):
 
     This is a fast but inaccurate version modeled on matlab's version"""
     reblur = irfftn(otf * rfftn(u_t), u_t.shape)
-    reblur[reblur <= 0] = np.finfo(reblur.dtype).resolution
+    reblur = _ensure_positive(reblur)
     im_ratio = image / reblur
     estimate = irfftn(np.conj(otf) * rfftn(im_ratio), im_ratio.shape)
     # need to figure out a way to pass the psf shape
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
             estimate = np.roll(estimate, 1, i)
+    estimate = _ensure_positive(estimate)
     return u_t * estimate
 
 
@@ -82,6 +83,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
 
     .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
     Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
+    # TODO: everything here can be wrapped in ne.evaluate
     alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
     alpha = max(min(alpha, 1), 0)
     # if alpha is positive calculate predicted step
@@ -126,7 +128,7 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
 
 
 def richardson_lucy(image, psf, iterations=10, prediction_order=1,
-                    core=_rl_core_fast_accurate, init="mean", **kwargs):
+                    core_type="fast", init="mean", **kwargs):
     """
     Richardson-Lucy deconvolution.
 
@@ -160,6 +162,18 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
     # Stolen from the dev branch of skimage because stable branch is slow
     # checked against matlab on 20160805 and agrees to within machine precision
     image, psf = _prep_img_and_psf(image, psf)
+    # choose core
+    if core_type == "fast":
+        core = _rl_core_fast_accurate
+    elif core_type == "accurate":
+        core = _rl_core_accurate
+    elif core_type == "direct":
+        core = _rl_core_direct
+    elif core_type == "matlab":
+        core = _rl_core_matlab
+    else:
+        raise ValueError("{} is not an acceptable core type".format(core_type))
+    # set up the proper dict for the right core
     if core is _rl_core_fast_accurate:
         fshape, fslice = _get_fshape_slice(image, psf)
         otf = rfftn(psf, fshape, **kwargs)
@@ -179,7 +193,7 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         otf = rfftn(ifftshift(psf_pad))
         core_dict = dict(image=image, otf=otf, psf=psf)
     else:
-        raise TypeError("{} is not a valid core".format(core))
+        raise RuntimeError("{} is not a valid core".format(core))
     # initialize variable for iterations
     # previous estimate
     u_tm1 = None
@@ -192,6 +206,16 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
     # previous difference
     g_tm1 = None
     for i in range(iterations):
+        print(i)
+        if prediction_order:
+            if i > 2:
+                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
+                                     prediction_order)
+            elif i > 1:
+                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
+                                     1)
+        # update estimate and ensure positive
+        core_dict["u_t"] = u_t = _ensure_positive(u_t)
         # call the update function
         u_tp1 = core(**core_dict, **kwargs)
         # update
@@ -202,17 +226,8 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         u_tm2 = u_tm1
         u_tm1 = u_t
         u_t = u_tp1
-        if prediction_order:
-            if i > 2:
-                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
-                                     prediction_order)
-            elif i > 1:
-                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
-                                     1)
-        # update estimate and ensure positive
-        core_dict["u_t"] = u_t = _ensure_positive(u_t)
     # return final estimate
-    return u_tp1
+    return u_t
 
 
 def wiener_filter(image, psf, reg, **kwargs):
