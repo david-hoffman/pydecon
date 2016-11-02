@@ -62,47 +62,22 @@ def _rl_core_accurate(image, psf, u_t):
     return u_t * estimate
 
 
-def _rl_core_matlab(image, otf, psf, u_t):
+def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
     """The core update step of the RL algorithm
 
-    This is a fast but inaccurate version modeled on matlab's version"""
-    reblur = irfftn(otf * rfftn(u_t), u_t.shape)
+    This is a fast but inaccurate version modeled on matlab's version
+    One improvement is to pad everything out when the shape isn't
+    good for fft."""
+    reblur = irfftn(otf * rfftn(u_t, **kwargs), u_t.shape, **kwargs)
     reblur = _ensure_positive(reblur)
     im_ratio = image / reblur
-    estimate = irfftn(np.conj(otf) * rfftn(im_ratio), im_ratio.shape)
+    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, **kwargs), im_ratio.shape, **kwargs)
     # need to figure out a way to pass the psf shape
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
             estimate = np.roll(estimate, 1, i)
     estimate = _ensure_positive(estimate)
     return u_t * estimate
-
-
-def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
-    """Biggs-Andrews Acceleration
-
-    .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
-    Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
-    # TODO: everything here can be wrapped in ne.evaluate
-    if g_tm2 is not None:
-        alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
-        alpha = max(min(alpha, 1), 0)
-    else:
-        alpha = 0
-    # if alpha is positive calculate predicted step
-    print("lambda = {:.3f}".format(alpha))
-    if alpha:
-        # first order correction
-        h1_t = u_t - u_tm1
-        if prediction_order > 1:
-            # second order correction
-            h2_t = (u_t - 2 * u_tm1 + u_tm2)
-        else:
-            h2_t = 0
-        u_tp1 = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
-        return u_tp1
-    else:
-        return u_t
 
 
 def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
@@ -131,8 +106,34 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
     return u_t * estimate
 
 
+def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
+    """Biggs-Andrews Acceleration
+
+    .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
+    Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
+    # TODO: everything here can be wrapped in ne.evaluate
+    if g_tm2 is not None:
+        alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
+        alpha = max(min(alpha, 1), 0)
+    else:
+        alpha = 0
+    # if alpha is positive calculate predicted step
+    if alpha:
+        # first order correction
+        h1_t = u_t - u_tm1
+        if prediction_order > 1:
+            # second order correction
+            h2_t = (u_t - 2 * u_tm1 + u_tm2)
+        else:
+            h2_t = 0
+        u_tp1 = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
+        return u_tp1
+    else:
+        return u_t
+
+
 def richardson_lucy(image, psf, iterations=10, prediction_order=1,
-                    core_type="fast", init="mean", **kwargs):
+                    core_type="matlab", init="matlab", **kwargs):
     """
     Richardson-Lucy deconvolution.
 
@@ -146,7 +147,11 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
        Number of iterations. This parameter plays the role of
        regularisation.
     prediction_order : int (0, 1 or 2)
-        Use Biggs-Andrews to accelerate the algorithm [2]
+        Use Biggs-Andrews to accelerate the algorithm [2] default is 1
+    core_type : str
+        Type of core to use (see Notes)
+    init : str
+        How to initialize the deconvolution (see Notes)
 
     Returns
     -------
@@ -155,6 +160,32 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
 
     Examples
     --------
+
+    Notes
+    -----
+    This algorithm can use a variety of cores to calculate the update step [1].
+    The update step basically consists of two convolutions which can be
+    performed in a few different ways. The "direct" core uses direct
+    convolution to calculate them and is painfully slow but is included for
+    completeness. The "accurate" core uses `fftconvolve` to properly and
+    quickly calculate the convolution. "fast" optimizes "accurate" by only
+    performing the FFTs on the PSF _once_. The "matlab" core is based on the
+    MatLab implementation of Richardson-Lucy which speeds up the convolution
+    steps by avoiding padding out both data and psf to avoid the wrap around
+    effect of the fftconvolve. This approach is generally accurate because the
+    psf is generally very small compared to data but will not give exactly the
+    same results as "accurate" or "fast" and should not be used for large or
+    complicated PSFs. The "matlab" routine also avoids the tapering effect
+    implicit in fftconvolve and should be used whenever any of the image
+    extends to the edge of data.
+
+    The algorithm can also be initilized in two ways: using the original image
+    ("matlab") or using a constant array the same size of the image filled with
+    the mean value of the image ("mean"). The advantage to starting with the
+    image is that you need fewer iterations to get a good result. However,
+    the disadvantage is that if there original image has low SNR the result
+    will be severly degraded. A good rule of thumb is that if the SNR is low
+    (SNR < 10) that `init="mean"` be used and double the number of iterations.
 
     References
     ----------
