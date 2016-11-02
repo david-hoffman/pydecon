@@ -6,11 +6,12 @@ cd(PATHSTR)
 
 % read in data
 % https://www.mathworks.com/matlabcentral/fileexchange/35684-save-and-load-a-multiframe-tiff-image
-psf = loadtiff('Real 3D PSF.tif');
-image = loadtiff('Real 3D Data.tif');
+psf = double(loadtiff('Real 3D PSF.tif'));
+psf = psf./sum(psf(:));
+image = double(loadtiff('Real 3D Data.tif'));
 % deconvolve data
 tic
-decon = deconvlucy(image, psf, 10);
+decon = deconvlucy2(image, psf, 10);
 toc
 % save decon
 options = struct('overwrite', true);
