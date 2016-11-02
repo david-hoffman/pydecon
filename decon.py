@@ -84,8 +84,11 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
     .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
     Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
     # TODO: everything here can be wrapped in ne.evaluate
-    alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
-    alpha = max(min(alpha, 1), 0)
+    if g_tm2 is not None:
+        alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
+        alpha = max(min(alpha, 1), 0)
+    else:
+        alpha = 0
     # if alpha is positive calculate predicted step
     print("lambda = {:.3f}".format(alpha))
     if alpha:
@@ -190,14 +193,14 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         if psf.shape != image.shape:
             # its been assumed that the background of the psf has already been
             # removed and that the psf has already been centered
-            psf_pad = fft_pad(psf, image.shape, mode='constant')
-        otf = rfftn(ifftshift(psf_pad))
+            psf = fft_pad(psf, image.shape, mode='constant')
+        otf = rfftn(ifftshift(psf))
         core_dict = dict(image=image, otf=otf, psf=psf)
     else:
         raise RuntimeError("{} is not a valid core".format(core))
     # initialize variable for iterations
     # previous estimate
-    u_tm1 = None
+    u_tm1 = u_tm2 = None
     if init == "matlab":
         core_dict["u_t"] = u_t = image
     else:
@@ -205,22 +208,28 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         # data this promotes a smooth solution and helps to reduce noise.
         core_dict["u_t"] = u_t = np.ones_like(image) * image.mean()
     # previous difference
-    g_tm1 = None
+    g_tm1 = g_tm2 = None
     for i in range(iterations):
+        # if prediction is requested perform it
         if prediction_order:
-            if i > 1:
-                u_t = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
-                                     prediction_order)
+            # need to save prediction as intermediate value
+            y = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2,
+                               prediction_order)
+        else:
+            y = u_t
         # update estimate and ensure positive
-        core_dict["u_t"] = u_t = _ensure_positive(u_t)
+        core_dict["u_t"] = _ensure_positive(y)
         # call the update function
         u_tp1 = core(**core_dict, **kwargs)
         # update
         # update g's
         g_tm2 = g_tm1
-        g_tm1 = u_tp1 - u_t
+        # this is where the magic is, we need to compute from previous step
+        # which may have been augmented by acceleration
+        g_tm1 = u_tp1 - y
         # now move u's along
         u_tm2 = u_tm1
+        # Here we don't want to update with accelerated version.
         u_tm1 = u_t
         u_t = u_tp1
     # return final estimate
