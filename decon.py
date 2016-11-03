@@ -68,10 +68,10 @@ def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
     This is a fast but inaccurate version modeled on matlab's version
     One improvement is to pad everything out when the shape isn't
     good for fft."""
-    reblur = irfftn(otf * rfftn(u_t, **kwargs), u_t.shape, **kwargs)
+    reblur = irfftn(otf * rfftn(u_t, u_t.shape, **kwargs), u_t.shape, **kwargs)
     reblur = _ensure_positive(reblur)
     im_ratio = image / reblur
-    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, **kwargs), im_ratio.shape, **kwargs)
+    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs), im_ratio.shape, **kwargs)
     # need to figure out a way to pass the psf shape
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
@@ -261,6 +261,7 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         # now move u's along
         u_tm2 = u_tm1
         # Here we don't want to update with accelerated version.
+        # why not? is this a mistake?
         u_tm1 = u_t
         u_t = u_tp1
     # return final estimate
