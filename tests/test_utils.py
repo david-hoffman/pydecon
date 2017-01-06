@@ -5,13 +5,31 @@ import unittest
 from pyDecon.utils import _ensure_positive, radialavg, expand_radialavg
 
 
+def make_random_blob(ndims, size):
+    """make a random sized and placed blob"""
+    # make coordinates
+    x = np.linspace(-1, 1, size)
+    mesh = np.meshgrid(*((x, ) * ndims), indexing="ij")
+    # randomly generate radii and center
+    radii = (np.random.rand(ndims) - 0.5) * 0.2
+    center = np.random.rand(ndims) - 0.5
+    # make sure they'll broadcast correctly with mesh
+    radii.shape += (1, ) * ndims
+    center.shape += (1, ) * ndims
+    # calc distances
+    distances = (mesh - center) / radii
+    r2 = (distances ** 2).sum(0)
+    # return blob
+    return np.exp(-r2)
+
+
 class TestRadialAverage(unittest.TestCase):
     """Radial average function tester class"""
 
     def setUp(self):
         """set up variables for testing"""
-        self.test_data2d = np.random.randn(128, 128)
-        self.test_data3d = np.random.randn(128, 128, 128)
+        self.test_data2d = make_random_blob(2, 128)
+        self.test_data3d = make_random_blob(3, 128)
 
     def test_returns2d(self):
         """make sure 2d data turns into 1d"""
@@ -34,20 +52,29 @@ class TestRadialAverage(unittest.TestCase):
         assert_true(radavg.shape[1] % 2)
 
     def test_self_consistency2d(self):
-        """Make sure that expanded radialavg is radially averaged to
-        the same thing"""
+        """Make sure that expanded radialavg makes sense"""
+        # radialavg
         radavg = radialavg(self.test_data2d)
+        # expand
         expanded = expand_radialavg(radavg)
-        expanded_avg = radialavg(expanded)
-        assert_allclose(expanded_avg, radavg)
+        center = np.array(expanded.shape) // 2
+        # test center lines
+        assert_allclose(expanded[center[0], center[1]:], radavg)
+        assert_allclose(expanded[center[0], center[1]:],
+                        expanded[center[0]:, center[1]])
 
     def test_self_consistency3d(self):
         """Make sure that expanded radialavg is radially averaged to the
-        same thing"""
+        same thing, 3d"""
+        # radialavg
         radavg = radialavg(self.test_data3d)
+        # expand
         expanded = expand_radialavg(radavg)
-        expanded_avg = radialavg(expanded)
-        assert_allclose(expanded_avg, radavg)
+        center = np.array(expanded.shape) // 2
+        # test center lines
+        assert_allclose(expanded[:, center[1], center[2]:], radavg)
+        assert_allclose(expanded[:, center[1], center[2]:],
+                        expanded[:, center[1]:, center[2]])
 
 
 class TestEnsurepositive(unittest.TestCase):

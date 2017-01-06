@@ -80,14 +80,21 @@ def expand_radialavg(data):
         # we know tha the above makes the data odd
         yxsize = data.size * 2 - 1
         # define the new datashape
-        datashape = (yxsize, yxsize)
     elif ndim == 2:
         yxsize = data.shape[-1] * 2 - 1
-        datashape = (data.shape[0], yxsize, yxsize)
     else:
         raise RuntimeError("Something has gone wrong!")
 
+    datashape = (yxsize, yxsize)
+    # start building the coordinate system
+    idx = np.indices((datashape))
     center = np.array(datashape) // 2
     # calculate the radius from center
     idx2 = idx - center[[Ellipsis] + [np.newaxis] * len(datashape)]
     r = np.sqrt(np.sum([i**2 for i in idx2], 0))
+    # figure out old r for the averaged data
+    oldr = np.arange((yxsize + 1) // 2)
+    if ndim == 1:
+        return np.interp(r, oldr, data)
+    else:
+        return np.array([np.interp(r, oldr, d) for d in data])
