@@ -16,26 +16,26 @@ class TestRadialAverage(unittest.TestCase):
     def test_returns2d(self):
         """make sure 2d data turns into 1d"""
         radavg = radialavg(self.test_data2d)
-        assert radavg.ndim == 1
+        assert_equals(radavg.ndim, 1)
 
     def test_returns3d(self):
         """make sure 3d data turns into 2d"""
         radavg = radialavg(self.test_data3d)
-        assert radavg.ndim == 2
+        assert_equals(radavg.ndim, 2)
 
     def test_returns2d_odd(self):
         """make sure 2d data turns into 1d that is odd in length"""
         radavg = radialavg(self.test_data2d)
-        assert radavg.size % 2
+        assert_true(radavg.size % 2)
 
-    def test_returns3d(self):
+    def test_returns3d_odd(self):
         """make sure 3d data turns into 2d that is odd along the r direction."""
         radavg = radialavg(self.test_data3d)
-        assert radavg.shape[1] % 2
+        assert_true(radavg.shape[1] % 2)
 
     def test_self_consistency2d(self):
-        """Make sure that expanded radialavg is radially averaged to the
-        same thing"""
+        """Make sure that expanded radialavg is radially averaged to
+        the same thing"""
         radavg = radialavg(self.test_data2d)
         expanded = expand_radialavg(radavg)
         expanded_avg = radialavg(expanded)

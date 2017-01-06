@@ -56,12 +56,12 @@ def radialavg(data):
     # figure out maxsize of data that is reasonable
     maxsize = max(*yxcenter, *(np.array(data.shape[-2:]) - np.array(yxcenter)))
     # maxsize should be odd
-    maxsize += maxsize % 2
+    maxsize += 1 - maxsize % 2
     if data.ndim == 2:
         return radial_profile(data, yxcenter)[0][:maxsize]
     elif data.ndim == 3:
         # return the radial profile for each z slice
-        return np.array(radial_profile(d, yxcenter)[0][:maxsize] for d in data)
+        return np.array([radial_profile(d, yxcenter)[0][:maxsize] for d in data])
     else:
         raise RuntimeError("Something has gone wrong!")
 
