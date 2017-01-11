@@ -17,17 +17,13 @@ def set_pyfftw_threads(threads=1):
 
 
 def _ensure_positive(data):
-    """Make sure data is positive and has no zeros
+    """Make sure data is positive"""
+    return np.fmax(data, 0)
 
-    For numerical stability
 
-    If we realize that mutating data is not a problem
-    and that changing in place could lead to signifcant
-    speed ups we can lose the data.copy() line"""
-    # make a copy of the data
-    data = data.copy()
-    data[data <= 0] = np.finfo(data.dtype).resolution
-    return data
+def _zero2eps(data):
+    """Replace zeros and negative numbers with machine precision"""
+    return np.fmax(data, np.finfo(data.dtype).eps)
 
 
 def _prep_img_and_psf(image, psf):
