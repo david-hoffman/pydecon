@@ -26,7 +26,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         pass
     start = time.time()
-    decon = rl(data, psf, 10, 1)
+    decon = rl(data, psf, 10, 1, threads=24)
     print("{:.3f} seconds".format(time.time() - start))
     print("Saving deconvolved data ...")
     # export wisdom

@@ -1,4 +1,4 @@
-function J = deconvlucy(varargin)
+function [J, wI, H, scale, Y] = deconvlucy2(varargin)
 %DECONVLUCY Deblur image using Lucy-Richardson method.
 %   J = DECONVLUCY(I,PSF) deconvolves image I using Lucy-
 %   Richardson algorithm, returning deblurred image J. The assumption is
@@ -116,9 +116,13 @@ idx = repmat({':'},[1 length(sizeI)]);
 for k = numNSdim,% index replicates for non-singleton PSF sizes only
   idx{k} = reshape(repmat(1:sizeI(k),[SUBSMPL 1]),[SUBSMPL*sizeI(k) 1]);
 end
-
+% if weight and readout are unity (which they usually are) then
+% wI is the input image with the positivity constraint applied.
 wI = max(WEIGHT.*(READOUT + J{1}),0);% at this point  - positivity constraint
 J{2} = J{2}(idx{:});
+%scale is not zero!
+%if weight is all ones, which it usually is, then fftn(weight) is delta
+%and inverse of delta is flat
 scale = real(ifftn(conj(H).*fftn(WEIGHT(idx{:})))) + sqrt(eps);
 clear WEIGHT;
 DAMPAR22 = (DAMPAR.^2)/2;
@@ -146,11 +150,10 @@ for k = lambda + (1:NUMIT)
     lambda = (J{4}(:,1).'*J{4}(:,2))/(J{4}(:,2).'*J{4}(:,2) +eps);
     lambda = max(min(lambda,1),0);% stability enforcement
   end
-  display(sprintf('lambda = %.3f', lambda))
+  display(sprintf('lambda = %.6f', lambda))
   Y = max(J{2} + lambda*(J{2} - J{3}),0);% plus positivity constraint
   % 3.b  Make core for the LR estimation
   CC = corelucy2(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,idx,vec,num);
-
   % 3.c Determine next iteration image & apply positivity constraint
   % J{3} -> u_tm1
   % J{2} -> u_tp1
@@ -160,8 +163,7 @@ for k = lambda + (1:NUMIT)
   clear CC;
   J{4} = [J{2}(:)-Y(:) J{4}(:,1)];
 end
-clear wI H scale Y;
-
+% clear wI H scale Y;
 % 4. Convert the right array (for cell it is first array, for notcell it is
 % second array) to the original image class & output whole thing
 num = 1 + strcmp(classI{1},'notcell');

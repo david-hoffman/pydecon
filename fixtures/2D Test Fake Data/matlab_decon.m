@@ -6,6 +6,8 @@ cd(PATHSTR)
 
 % read in data
 psf = imread('psf.tif');
+psf = max(psf, 0);
+psf = psf./sum(psf(:));
 image = imread('image.tif');
 % deconvolve data
 tic
