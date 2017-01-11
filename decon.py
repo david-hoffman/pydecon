@@ -18,7 +18,7 @@ except ImportError:
     from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
                            rfftn, irfftn)
 from dphutils import fft_pad
-from .utils import _prep_img_and_psf, _ensure_positive
+from .utils import _prep_img_and_psf, _ensure_positive, _zero2eps
 import scipy.signal.signaltools as sig
 from scipy.signal import fftconvolve
 from scipy.ndimage import convolve
@@ -41,7 +41,7 @@ def _rl_core_direct(image, psf, u_t):
 
     An exact version that uses direct convolution"""
     reblur = convolve(u_t, psf, mode="reflect")
-    reblur = _ensure_positive(reblur)
+    reblur = _zero2eps(reblur)
     im_ratio = image / reblur
     # reverse slicing
     s = [slice(None, None, -1)] * psf.ndim
@@ -54,7 +54,7 @@ def _rl_core_accurate(image, psf, u_t):
 
     An accurate version that """
     reblur = fftconvolve(u_t, psf, "same")
-    reblur = _ensure_positive(reblur)
+    reblur = _zero2eps(reblur)
     im_ratio = image / reblur
     # reverse slicing
     s = slice(None, None, -1)
@@ -69,15 +69,16 @@ def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
     One improvement is to pad everything out when the shape isn't
     good for fft."""
     reblur = irfftn(otf * rfftn(u_t, u_t.shape, **kwargs), u_t.shape, **kwargs)
-    reblur = _ensure_positive(reblur)
-    im_ratio = image / reblur
-    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs), im_ratio.shape, **kwargs)
+    reblur = _zero2eps(reblur)
+    im_ratio = image / reblur  # _zero2eps(array(0.0))
+    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs),
+                      im_ratio.shape, **kwargs)
     # need to figure out a way to pass the psf shape
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
             estimate = np.roll(estimate, 1, i)
     estimate = _ensure_positive(estimate)
-    return u_t * estimate
+    return u_t * estimate  # / (1 + np.sqrt(np.finfo(u_t.dtype).eps))
 
 
 def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
@@ -113,7 +114,8 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
     Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
     # TODO: everything here can be wrapped in ne.evaluate
     if g_tm2 is not None:
-        alpha = (g_tm1 * g_tm2).sum() / (g_tm2**2).sum()
+        alpha = (g_tm1 * g_tm2).sum() / ((g_tm2**2).sum() +
+                                         np.finfo(g_tm1.dtype).eps)
         alpha = max(min(alpha, 1), 0)
     else:
         alpha = 0
@@ -259,11 +261,10 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         # which may have been augmented by acceleration
         g_tm1 = u_tp1 - y
         # now move u's along
-        u_tm2 = u_tm1
         # Here we don't want to update with accelerated version.
         # why not? is this a mistake?
-        u_tm1 = u_t
-        u_t = u_tp1
+        u_t, u_tm1, u_tm2 = u_tp1, u_t, u_tm1
+        
     # return final estimate
     return u_t
 
