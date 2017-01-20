@@ -222,7 +222,6 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
     elif core is _rl_core_accurate or core is _rl_core_direct:
         core_dict = dict(image=image, psf=psf)
     elif core is _rl_core_matlab:
-        image, psf = _prep_img_and_psf(image, psf)
         if psf.shape != image.shape:
             # its been assumed that the background of the psf has already been
             # removed and that the psf has already been centered

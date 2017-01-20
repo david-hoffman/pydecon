@@ -34,6 +34,7 @@ def _prep_img_and_psf(image, psf):
     image = image.astype(np.float)
     psf = psf.astype(np.float)
     # need to make sure both image and PSF are totally positive.
+    # I'm not actually sure if this step is necessary or a good idea.
     image = _ensure_positive(image)
     psf = _ensure_positive(psf)
     # normalize the kernel
@@ -62,6 +63,7 @@ def radialavg(data):
         raise RuntimeError("Something has gone wrong!")
 
 
+# fixes fft issue
 def expand_radialavg(data):
     """Expand a radially averaged data set to a full 2D or 3D psf/otf
 
@@ -72,25 +74,27 @@ def expand_radialavg(data):
     if ndim < 1 or ndim > 2:
         raise ValueError(
             "Data has wrong number of dimensions, ndim = {}".format(data.ndim))
-    if ndim == 1:
-        # we know tha the above makes the data odd
-        yxsize = data.size * 2 - 1
-        # define the new datashape
-    elif ndim == 2:
-        yxsize = data.shape[-1] * 2 - 1
-    else:
-        raise RuntimeError("Something has gone wrong!")
-
-    datashape = (yxsize, yxsize)
+    half_yxsize = data.shape[-1]
+    quadsize = half_yxsize + 1
+    datashape = (quadsize, quadsize)
     # start building the coordinate system
     idx = np.indices((datashape))
-    center = np.array(datashape) // 2
     # calculate the radius from center
-    idx2 = idx - center[[Ellipsis] + [np.newaxis] * len(datashape)]
-    r = np.sqrt(np.sum([i**2 for i in idx2], 0))
+    r = np.sqrt(np.sum([i**2 for i in idx], 0))
     # figure out old r for the averaged data
-    oldr = np.arange((yxsize + 1) // 2)
+    oldr = np.arange(half_yxsize)
+    # final shape
+    final_shape = (2 * half_yxsize, ) * 2
     if ndim == 1:
-        return np.interp(r, oldr, data)
+        lrquad = np.interp(r, oldr, data)
     else:
-        return np.array([np.interp(r, oldr, d) for d in data])
+        final_shape = (data.shape[0], ) + final_shape
+        lrquad = np.array([np.interp(r, oldr, d) for d in data])
+    # make final array to fill
+    final_ar = np.empty(final_shape, dtype=lrquad.dtype)
+    # fill each quadrant
+    final_ar[..., half_yxsize:, half_yxsize:] = lrquad[..., :-1, :-1]
+    final_ar[..., :half_yxsize, half_yxsize:] = lrquad[..., :0:-1, :-1]
+    final_ar[..., half_yxsize:, :half_yxsize] = lrquad[..., :-1, :0:-1]
+    final_ar[..., :half_yxsize, :half_yxsize] = lrquad[..., :0:-1, :0:-1]
+    return final_ar
