@@ -73,7 +73,9 @@ def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
     im_ratio = image / reblur  # _zero2eps(array(0.0))
     estimate = irfftn(np.conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs),
                       im_ratio.shape, **kwargs)
-    # need to figure out a way to pass the psf shape
+    # The below is to compensate for the slight shift that using np.conj
+    # can introduce verus actually reversing the PSF. See notebooks for
+    # details.
     for i, (s, p) in enumerate(zip(image.shape, psf.shape)):
         if s % 2 and not p % 2:
             estimate = np.roll(estimate, 1, i)
@@ -196,7 +198,7 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
     Restoration Algorithms. Applied Optics 1997, 36 (8), 1766.
 
     """
-    # Stolen from the dev branch of skimage because stable branch is slow
+    # TODO: Make sure that data is properly padded for fast FFT numbers.
     # checked against matlab on 20160805 and agrees to within machine precision
     image, psf = _prep_img_and_psf(image, psf)
     # choose core

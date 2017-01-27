@@ -34,8 +34,8 @@ def _prep_img_and_psf(image, psf):
     image = image.astype(np.float)
     psf = psf.astype(np.float)
     # need to make sure both image and PSF are totally positive.
-    # I'm not actually sure if this step is necessary or a good idea.
     image = _ensure_positive(image)
+    # I'm not actually sure if this step is necessary or a good idea.
     psf = _ensure_positive(psf)
     # normalize the kernel
     psf /= psf.sum()
@@ -43,7 +43,9 @@ def _prep_img_and_psf(image, psf):
 
 
 def radialavg(data):
-    """Radially average psf/otf"""
+    """Radially average psf/otf
+
+    Note: it only really makes sense to radially average the OTF"""
     if data.ndim < 2 or data.ndim > 3:
         raise ValueError(
             "Data has wrong number of dimensions, ndim = {}".format(data.ndim))

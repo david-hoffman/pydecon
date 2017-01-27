@@ -88,6 +88,7 @@ class TestRadialAverageFuncs(unittest.TestCase):
         eps = np.finfo(fft_data.dtype).eps
         assert_true(max_val < eps, "{} !< {}".format(max_val, eps))
 
+
 class TestEnsurepositive(unittest.TestCase):
     """test ensure positive for proper behaviour"""
 
