@@ -132,7 +132,7 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     # mask = # more stuff here
     otf[mask] = 0
     # ifft
-    cleaned_psf = np.real(fftshift(ifftn(ifftshift(otf))))
+    cleaned_psf = np.real(ifftshift(ifftn(fftshift(otf))))
     return cleaned_psf
 
 
