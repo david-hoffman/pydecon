@@ -229,7 +229,7 @@ class PSFFinder(PeakFinder):
             # now window size equals sqrt or this
             win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
 
-        window = slice_maker(best[0], best[1], win_size)
+        window = slice_maker(best, win_size)
 
         return window
 
