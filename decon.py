@@ -22,6 +22,7 @@ from .utils import _prep_img_and_psf, _ensure_positive, _zero2eps
 import scipy.signal.signaltools as sig
 from scipy.signal import fftconvolve
 from scipy.ndimage import convolve
+import tqdm
 
 
 def _get_fshape_slice(image, psf):
@@ -243,7 +244,7 @@ def richardson_lucy(image, psf, iterations=10, prediction_order=1,
         core_dict["u_t"] = u_t = np.ones_like(image) * image.mean()
     # previous difference
     g_tm1 = g_tm2 = None
-    for i in range(iterations):
+    for i in tqdm.trange(iterations):
         # if prediction is requested perform it
         if prediction_order:
             # need to save prediction as intermediate value

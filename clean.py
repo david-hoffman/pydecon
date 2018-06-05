@@ -103,13 +103,15 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     z = xtot[0]
     theta = np.arcsin(na / ni)
     # make a double sided cone
-    mask = r - abs(z) * np.tan(theta) > ns * 0.45 * wl / (2 * na)
+    psf_mask = r - abs(z) * np.tan(theta) > ns * 0.45 * wl / (2 * na)
     # zmax = zres * mask.shape[0] / 2
     # width = ns * 0.45 * wl / (2 * na) + zmax * np.tan(theta)
     # window = slice_maker(*(np.array(mask.shape[1:]) // 2), int(2 * width / res))
     # print(window)
     # return mask, window
-    cleaned_psf[mask] = 0
+    bg = np.median(cleaned_psf[psf_mask])
+    cleaned_psf = np.fmax(cleaned_psf - bg, 0)
+    cleaned_psf[psf_mask] = 0
     # TODO: switch fft's to rfft's
     otf = fftshift(fftn(ifftshift(cleaned_psf)))
     # make the coordinate system, assume data is centered
@@ -128,9 +130,9 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     # calculate bottom half
     # otherhalf = np.hypot(cent_kr, kz + z0 - z_offset * dkz) <= kr_max
     otherhalf = np.hypot(cent_kr, kz + z0) > kr_max
-    mask = np.logical_or(otherhalf, onehalf)
+    otf_mask = np.logical_or(otherhalf, onehalf)
     # mask = # more stuff here
-    otf[mask] = 0
+    otf[otf_mask] = 0
     # ifft
     cleaned_psf = np.real(ifftshift(ifftn(fftshift(otf))))
     return cleaned_psf
