@@ -8,15 +8,23 @@ Copyright (c) 2016, David Hoffman
 """
 
 import numpy as np
+
 try:
     import pyfftw
-    from pyfftw.interfaces.numpy_fft import (fftshift, ifftshift, fftn, ifftn,
-                                             rfftn, irfftn, fftfreq)
+    from pyfftw.interfaces.numpy_fft import (
+        fftshift,
+        ifftshift,
+        fftn,
+        ifftn,
+        rfftn,
+        irfftn,
+        fftfreq,
+    )
+
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
-    from numpy.fft import (fftshift, ifftshift, fftn, ifftn,
-                           rfftn, irfftn, fftfreq)
+    from numpy.fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn, fftfreq
 from pyOTF.utils import remove_bg, center_data
 from peaks.peakfinder import PeakFinder
 from dphplotting import display_grid, mip, slice_plot
@@ -47,6 +55,7 @@ def calc_infocus_psf(psf):
     otf = fftshift(fftn(ifftshift(psf))).mean(0)
     infocus_psf = np.real(fftshift(ifftn(ifftshift(otf))))
     return infocus_psf
+
 
 # TODO: for both cleaning functions there should be an option to limit
 # the window size to the realspace mask.
@@ -91,9 +100,13 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     """
 
     # break out kwargs
-    na, ni, wl, res, zres = (exp_kwargs["na"], exp_kwargs["ni"],
-                             exp_kwargs["wl"], exp_kwargs["res"],
-                             exp_kwargs["zres"])
+    na, ni, wl, res, zres = (
+        exp_kwargs["na"],
+        exp_kwargs["ni"],
+        exp_kwargs["wl"],
+        exp_kwargs["res"],
+        exp_kwargs["zres"],
+    )
     # psf can be approximated by a gaussian with sigma = 0.45 * wl / (2 * na)
     # https://en.wikipedia.org/wiki/Airy_disk
     # filter in x-space by assuming that there is no data at ns sigma
@@ -183,15 +196,13 @@ class PSFFinder(PeakFinder):
         blobs_df.SNR = blobs_df.dropna().SNR.round().astype(int)
         # sort by SNR then sigma_x after filtering for unreasonably
         # large blobs and reindex data frame here
-        new_blobs_df = blobs_df[
-            blobs_df.sigma_x < max_s
-        ].sort_values(
-            ['SNR', 'sigma_x'], ascending=[False, True]
-        ).reset_index(drop=True)
+        new_blobs_df = (
+            blobs_df[blobs_df.sigma_x < max_s]
+            .sort_values(["SNR", "sigma_x"], ascending=[False, True])
+            .reset_index(drop=True)
+        )
         # set the internal state to the selected blobs
-        self.blobs = new_blobs_df[
-            ['y0', 'x0', 'sigma_x', 'amp']
-        ].values.astype(int)
+        self.blobs = new_blobs_df[["y0", "x0", "sigma_x", "amp"]].values.astype(int)
         self.fits = new_blobs_df
 
     def find_window(self, blob_num=0):
@@ -206,14 +217,15 @@ class PSFFinder(PeakFinder):
             # TODO: this should be refactored to use KDTrees
             # more than one blob find
             best = np.round(
-                self.fits.iloc[blob_num][['y0', 'x0', 'sigma_x', 'amp']].values
+                self.fits.iloc[blob_num][["y0", "x0", "sigma_x", "amp"]].values
             ).astype(int)
 
             def calc_r(blob1, blob2):
                 """Calc euclidean distance between blob1 and blob2"""
                 y1, x1, s1, a1 = blob1
                 y2, x2, s2, a2 = blob2
-                return np.sqrt((y1 - y2)**2 + (x1 - x2)**2)
+                return np.sqrt((y1 - y2) ** 2 + (x1 - x2) ** 2)
+
             # calc distances
             r = np.array([calc_r(best, blob) for blob in blobs])
             # find min distances
@@ -224,10 +236,7 @@ class PSFFinder(PeakFinder):
                 r_min = r[1]
             except IndexError:
                 # make r_min the size of the image
-                r_min = min(
-                    np.concatenate((np.array(self.data.shape) - best[:2],
-                                    best[:2]))
-                )
+                r_min = min(np.concatenate((np.array(self.data.shape) - best[:2], best[:2])))
             # now window size equals sqrt or this
             win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
 
@@ -238,8 +247,7 @@ class PSFFinder(PeakFinder):
     def plot_all_windows(self):
         """Plot all the windows so that user can choose favorite"""
         windows = [self.find_window(i) for i in range(len(self.fits))]
-        fig, axs = display_grid({i: self.data[win]
-                                 for i, win in enumerate(windows)})
+        fig, axs = display_grid({i: self.data[win] for i, win in enumerate(windows)})
         return fig, axs
 
 
@@ -302,8 +310,7 @@ class PSF2DProcessor(PSFProcMethods, PSFFinder):
 class PSF3DProcessor(PSFProcMethods, PSFFinder):
     """An object for processing 2D PSFs and OTFs from 3D stacks"""
 
-    def __init__(self, stack, wl=585, na=0.85, ni=1.0, res=130, zres=250,
-                 **kwargs):
+    def __init__(self, stack, wl=585, na=0.85, ni=1.0, res=130, zres=250, **kwargs):
         """Find PSFs and turn them into OTFs
 
         Parameters
@@ -331,7 +338,6 @@ class PSF3DProcessor(PSFProcMethods, PSFFinder):
 
     def clean_psf(self, blob_num, **kwargs):
         """"""
-        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res, ni=self.ni,
-                          zres=self.zres)
+        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res, ni=self.ni, zres=self.zres)
         psf = psf3dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
         return psf

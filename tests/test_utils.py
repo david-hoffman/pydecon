@@ -9,13 +9,13 @@ def make_random_blob(ndims, size):
     """make a random sized and placed blob"""
     # make coordinates
     x = np.linspace(-1, 1, size)
-    mesh = np.meshgrid(*((x, ) * ndims), indexing="ij")
+    mesh = np.meshgrid(*((x,) * ndims), indexing="ij")
     # randomly generate radii and center
     radii = (np.random.rand(ndims) - 0.5) * 0.2
     center = np.random.rand(ndims) - 0.5
     # make sure they'll broadcast correctly with mesh
-    radii.shape += (1, ) * ndims
-    center.shape += (1, ) * ndims
+    radii.shape += (1,) * ndims
+    center.shape += (1,) * ndims
     # calc distances
     distances = (mesh - center) / radii
     r2 = (distances ** 2).sum(0)
@@ -57,9 +57,8 @@ class TestRadialAverageFuncs(unittest.TestCase):
         expanded = expand_radialavg(self.radavg2d)
         center = np.array(expanded.shape) // 2
         # test center lines
-        assert_allclose(expanded[center[0], center[1]:], self.radavg2d)
-        assert_allclose(expanded[center[0], center[1]:],
-                        expanded[center[0]:, center[1]])
+        assert_allclose(expanded[center[0], center[1] :], self.radavg2d)
+        assert_allclose(expanded[center[0], center[1] :], expanded[center[0] :, center[1]])
 
     def test_self_consistency3d(self):
         """Make sure that expanded radialavg is radially averaged to the
@@ -68,9 +67,8 @@ class TestRadialAverageFuncs(unittest.TestCase):
         expanded = expand_radialavg(self.radavg3d)
         center = np.array(expanded.shape) // 2
         # test center lines
-        assert_allclose(expanded[:, center[1], center[2]:], self.radavg3d)
-        assert_allclose(expanded[:, center[1], center[2]:],
-                        expanded[:, center[1]:, center[2]])
+        assert_allclose(expanded[:, center[1], center[2] :], self.radavg3d)
+        assert_allclose(expanded[:, center[1], center[2] :], expanded[:, center[1] :, center[2]])
 
     def test_fft_2d(self):
         """Test that fft is real"""

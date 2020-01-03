@@ -29,8 +29,7 @@ def _zero2eps(data):
 def _prep_img_and_psf(image, psf):
     """Do basic data checking, convert data to float, normalize psf and make
     sure data are positive"""
-    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
-                                    " of dimensions")
+    assert psf.ndim == image.ndim, "image and psf do not have the same number" " of dimensions"
     image = image.astype(np.float)
     psf = psf.astype(np.float)
     # need to make sure both image and PSF are totally positive.
@@ -47,8 +46,7 @@ def radialavg(data):
 
     Note: it only really makes sense to radially average the OTF"""
     if data.ndim < 2 or data.ndim > 3:
-        raise ValueError(
-            "Data has wrong number of dimensions, ndim = {}".format(data.ndim))
+        raise ValueError("Data has wrong number of dimensions, ndim = {}".format(data.ndim))
     # find data maximum, then we use this as the center
     center = np.unravel_index(data.argmax(), data.shape)
     yxcenter = center[-2:]
@@ -74,23 +72,22 @@ def expand_radialavg(data):
     Assumes standard numpy ordering of axes (i.e. zyx)"""
     ndim = data.ndim
     if ndim < 1 or ndim > 2:
-        raise ValueError(
-            "Data has wrong number of dimensions, ndim = {}".format(data.ndim))
+        raise ValueError("Data has wrong number of dimensions, ndim = {}".format(data.ndim))
     half_yxsize = data.shape[-1]
     quadsize = half_yxsize + 1
     datashape = (quadsize, quadsize)
     # start building the coordinate system
     idx = np.indices((datashape))
     # calculate the radius from center
-    r = np.sqrt(np.sum([i**2 for i in idx], 0))
+    r = np.sqrt(np.sum([i ** 2 for i in idx], 0))
     # figure out old r for the averaged data
     oldr = np.arange(half_yxsize)
     # final shape
-    final_shape = (2 * half_yxsize, ) * 2
+    final_shape = (2 * half_yxsize,) * 2
     if ndim == 1:
         lrquad = np.interp(r, oldr, data)
     else:
-        final_shape = (data.shape[0], ) + final_shape
+        final_shape = (data.shape[0],) + final_shape
         lrquad = np.array([np.interp(r, oldr, d) for d in data])
     # make final array to fill
     final_ar = np.empty(final_shape, dtype=lrquad.dtype)
