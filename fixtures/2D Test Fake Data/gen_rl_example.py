@@ -23,7 +23,7 @@ from matplotlib import pyplot as plt
 def gen_data():
     print("Generating the data ...")
     x = np.linspace(-2.5, 2.5, 64, True)
-    kernel = np.exp(-x ** 2)
+    kernel = np.exp(-(x ** 2))
     kernel = kernel[np.newaxis] * kernel[:, np.newaxis]
     # normalize kernel
     k_norm = kernel / kernel.sum()
