@@ -10,7 +10,7 @@ jobs:
   build:
     name: Create Release
     runs-on: ubuntu-latest
-    if: github.repository == 'david-hoffman/pyotf'
+    if: github.repository == 'david-hoffman/pydecon'
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
