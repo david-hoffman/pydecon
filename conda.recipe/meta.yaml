@@ -1,0 +1,38 @@
+# conda config --set anaconda_upload yes
+# conda build --python 3.8 conda.recipe/
+
+{% set setupdata = load_setup_py_data() %}
+
+package:
+  name: pydecon
+  version: {{ setupdata['version'] }}
+
+source:
+  path: ../
+
+build:
+  string: {{ GIT_BUILD_STR }}
+  noarch: python
+  number: {{ GIT_DESCRIBE_NUMBER }}
+  script: pip install .
+
+requirements:
+  build:
+    - python
+    - pip
+  run:
+    {% for req in setupdata.get('install_requires', []) %}
+      - {{ req }}
+    {% endfor %}
+
+test:
+  requires:
+    - pytest
+  imports:
+    - pydecon
+
+about:
+  home: {{ setupdata['url'] }}
+  license: Apache License Version 2.0
+  license_file: LICENSE.md
+  summary: {{ setupdata['description'] }}

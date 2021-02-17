@@ -25,7 +25,7 @@ try:
     pyfftw.interfaces.cache.enable()
 except ImportError:
     from numpy.fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn, fftfreq
-from pyOTF.utils import remove_bg, center_data
+from pyotf.utils import remove_bg, center_data
 from peaks.peakfinder import PeakFinder
 from dphplotting import display_grid, mip, slice_plot
 from dphutils import slice_maker

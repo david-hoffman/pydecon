@@ -1,1 +1,7 @@
+# ignore notebooks for linguist
+*.ipynb linguist-documentation
+
+# Auto detect text files and perform LF normalization
+* text=auto
+
 pydecon/_version.py export-subst

@@ -1,0 +1,8 @@
+numpy
+scipy
+pyotf
+dphutils
+dphplotting
+peaks
+tqdm
+pyfftw

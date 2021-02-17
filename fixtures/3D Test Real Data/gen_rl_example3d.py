@@ -10,7 +10,7 @@ import time
 import pickle
 import pyfftw
 import numpy as np
-from skimage.external import tifffile as tif
+import tifffile as tif
 from skimage.restoration import richardson_lucy as rl_skimage
 from pyDecon.decon import richardson_lucy as rl
 

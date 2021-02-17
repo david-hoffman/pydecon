@@ -14,7 +14,7 @@ from collections import OrderedDict
 from itertools import product
 from pyDecon.utils import _ensure_positive
 from scipy.ndimage import convolve
-from skimage.external import tifffile as tif
+import tifffile as tif
 from skimage.restoration import richardson_lucy as rl_skimage
 from pyDecon.decon import richardson_lucy as rl
 from matplotlib import pyplot as plt
