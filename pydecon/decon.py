@@ -303,12 +303,12 @@ def wiener_filter(image, psf, reg, **kwargs):
 
 if __name__ == "__main__":
     from skimage.data import hubble_deep_field
-    from skimage.color import rgb2grey
+    from skimage.color import rgb2gray
     from matplotlib import pyplot as plt
 
     plt.rcParams["image.cmap"] = "Greys_r"
     np.random.seed(12345)
-    image = rgb2grey(hubble_deep_field())
+    image = rgb2gray(hubble_deep_field())
     image = image / image.max()
     image *= 25.0
     x = np.linspace(-4, 4, 64)
@@ -318,11 +318,13 @@ if __name__ == "__main__":
     blur_image_noisy = np.random.poisson(blur_image)
     psf_noisy = np.random.poisson(psf)
     deblurred_image = richardson_lucy(blur_image_noisy, psf_noisy / psf_noisy.sum(), 10, 1)
-    fig, axs = plt.subplots(3, 2, figsize=(10, 15))
+    fig, axs = plt.subplots(3, 2, figsize=(4, 6))
     titles = ("Image", "PSF", "Blurred Image", "Noisy PSF", "Noisy Image", "Deconvolved")
     datas = (image, psf, blur_image, psf_noisy, blur_image_noisy, deblurred_image)
     for ax, t, d in zip(axs.ravel(), titles, datas):
         ax.matshow(d)
         ax.set_title(t)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
 
     plt.show()
