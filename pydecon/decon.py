@@ -11,14 +11,13 @@ import numpy as np
 
 try:
     import pyfftw
-    from pyfftw.interfaces.numpy_fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn
+    from pyfftw.interfaces.numpy_fft import ifftshift, rfftn, irfftn
 
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
-    from numpy.fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn
-from dphutils import fft_pad
-from .utils import _prep_img_and_psf, _ensure_positive, _zero2eps
+    from numpy.fft import ifftshift, rfftn, irfftn
+from .utils import _prep_img_and_psf, _ensure_positive, _zero2eps, _fft_pad
 import scipy.signal.signaltools as sig
 from scipy.signal import fftconvolve
 from scipy.ndimage import convolve
@@ -225,7 +224,7 @@ def richardson_lucy(
         if psf.shape != image.shape:
             # its been assumed that the background of the psf has already been
             # removed and that the psf has already been centered
-            psf = fft_pad(psf, image.shape, mode="constant")
+            psf = _fft_pad(psf, image.shape, mode="constant")
         otf = rfftn(ifftshift(psf))
         core_dict = dict(image=image, otf=otf, psf=psf)
     else:
@@ -295,7 +294,7 @@ def wiener_filter(image, psf, reg, **kwargs):
     if psf.shape != image.shape:
         # its been assumed that the background of the psf has already been
         # removed and that the psf has already been centered
-        psf = fft_pad(psf, image.shape, mode="constant")
+        psf = _fft_pad(psf, image.shape, mode="constant")
     otf = rfftn(ifftshift(psf), **kwargs)
     filt = np.conj(otf) / (abs(otf) ** 2 + reg ** 2)
     im_deconv = np.irfftn(filt * rfftn(ifftshift(image), **kwargs), image.shape, **kwargs)

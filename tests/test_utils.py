@@ -1,8 +1,8 @@
 from nose.tools import *
 import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
+from numpy.testing import assert_allclose
 import unittest
-from pyDecon.utils import _ensure_positive, radialavg, expand_radialavg
+from pydecon.utils import _ensure_positive, radialavg, expand_radialavg
 
 
 def make_random_blob(ndims, size):

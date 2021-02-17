@@ -16,19 +16,13 @@ try:
         ifftshift,
         fftn,
         ifftn,
-        rfftn,
-        irfftn,
         fftfreq,
     )
 
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
-    from numpy.fft import fftshift, ifftshift, fftn, ifftn, rfftn, irfftn, fftfreq
-from pyotf.utils import remove_bg, center_data
-from peaks.peakfinder import PeakFinder
-from dphplotting import display_grid, mip, slice_plot
-from dphutils import slice_maker
+    from numpy.fft import fftshift, ifftshift, fftn, ifftn, fftfreq
 
 
 def _make_kspace(data, res):
@@ -151,193 +145,195 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     return cleaned_psf
 
 
-class PSFFinder(PeakFinder):
-    """Object to find and analyze subdiffractive emmitters"""
+### GRAVEYARD
 
-    def __init__(self, data, psfwidth=1.3, window_width=20):
-        """Analyze a z-stack of subdiffractive emmitters
+# class PSFFinder(PeakFinder):
+#     """Object to find and analyze subdiffractive emmitters"""
 
-        This object will find sub-diffractive emmitters so that they
-        can be cleaned up and analyzed
+#     def __init__(self, data, psfwidth=1.3, window_width=20):
+#         """Analyze a z-stack of subdiffractive emmitters
 
-        Parameters
-        ----------
-        stack : ndarray
+#         This object will find sub-diffractive emmitters so that they
+#         can be cleaned up and analyzed
 
-        Kwargs
-        ------
-        psfwidth : float
-        window_width : int"""
-        super().__init__(data, psfwidth)
-        self.find_blobs()
-        self.window_width = window_width
-        self.find_psfs(2 * psfwidth)
+#         Parameters
+#         ----------
+#         stack : ndarray
 
-    def find_psfs(self, max_s=2.1):
-        """Function to find and fit blobs in the max intensity image
+#         Kwargs
+#         ------
+#         psfwidth : float
+#         window_width : int"""
+#         super().__init__(data, psfwidth)
+#         self.find_blobs()
+#         self.window_width = window_width
+#         self.find_psfs(2 * psfwidth)
 
-        Blobs with the appropriate parameters are saved for further fitting.
+#     def find_psfs(self, max_s=2.1):
+#         """Function to find and fit blobs in the max intensity image
 
-        Parameters
-        ----------
-        max_s: float
-            Reject all peaks with a fit width greater than this
-        num_peaks: int
-            The number of peaks to analyze further"""
-        window_width = self.window_width
-        # find blobs
-        self.find_blobs()
-        # prune blobs
-        self.remove_edge_blobs(window_width)
-        self.prune_blobs(window_width)
-        # fit blobs in max intensity
-        blobs_df = self.fit_blobs(window_width)
-        # round to make sorting a little more meaningfull
-        blobs_df.SNR = blobs_df.dropna().SNR.round().astype(int)
-        # sort by SNR then sigma_x after filtering for unreasonably
-        # large blobs and reindex data frame here
-        new_blobs_df = (
-            blobs_df[blobs_df.sigma_x < max_s]
-            .sort_values(["SNR", "sigma_x"], ascending=[False, True])
-            .reset_index(drop=True)
-        )
-        # set the internal state to the selected blobs
-        self.blobs = new_blobs_df[["y0", "x0", "sigma_x", "amp"]].values.astype(int)
-        self.fits = new_blobs_df
+#         Blobs with the appropriate parameters are saved for further fitting.
 
-    def find_window(self, blob_num=0):
-        """Finds the biggest window distance."""
-        # pull all blobs
-        blobs = self.blobs
-        # three different cases
-        if not len(blobs):
-            # no blobs in window, raise hell
-            raise RuntimeError("No blobs found, can't find window")
-        else:
-            # TODO: this should be refactored to use KDTrees
-            # more than one blob find
-            best = np.round(
-                self.fits.iloc[blob_num][["y0", "x0", "sigma_x", "amp"]].values
-            ).astype(int)
+#         Parameters
+#         ----------
+#         max_s: float
+#             Reject all peaks with a fit width greater than this
+#         num_peaks: int
+#             The number of peaks to analyze further"""
+#         window_width = self.window_width
+#         # find blobs
+#         self.find_blobs()
+#         # prune blobs
+#         self.remove_edge_blobs(window_width)
+#         self.prune_blobs(window_width)
+#         # fit blobs in max intensity
+#         blobs_df = self.fit_blobs(window_width)
+#         # round to make sorting a little more meaningfull
+#         blobs_df.SNR = blobs_df.dropna().SNR.round().astype(int)
+#         # sort by SNR then sigma_x after filtering for unreasonably
+#         # large blobs and reindex data frame here
+#         new_blobs_df = (
+#             blobs_df[blobs_df.sigma_x < max_s]
+#             .sort_values(["SNR", "sigma_x"], ascending=[False, True])
+#             .reset_index(drop=True)
+#         )
+#         # set the internal state to the selected blobs
+#         self.blobs = new_blobs_df[["y0", "x0", "sigma_x", "amp"]].values.astype(int)
+#         self.fits = new_blobs_df
 
-            def calc_r(blob1, blob2):
-                """Calc euclidean distance between blob1 and blob2"""
-                y1, x1, s1, a1 = blob1
-                y2, x2, s2, a2 = blob2
-                return np.sqrt((y1 - y2) ** 2 + (x1 - x2) ** 2)
+#     def find_window(self, blob_num=0):
+#         """Finds the biggest window distance."""
+#         # pull all blobs
+#         blobs = self.blobs
+#         # three different cases
+#         if not len(blobs):
+#             # no blobs in window, raise hell
+#             raise RuntimeError("No blobs found, can't find window")
+#         else:
+#             # TODO: this should be refactored to use KDTrees
+#             # more than one blob find
+#             best = np.round(
+#                 self.fits.iloc[blob_num][["y0", "x0", "sigma_x", "amp"]].values
+#             ).astype(int)
 
-            # calc distances
-            r = np.array([calc_r(best, blob) for blob in blobs])
-            # find min distances
-            # remember that best is in blobs so 0 will be in the list
-            # find the next value
-            r.sort()
-            try:
-                r_min = r[1]
-            except IndexError:
-                # make r_min the size of the image
-                r_min = min(np.concatenate((np.array(self.data.shape) - best[:2], best[:2])))
-            # now window size equals sqrt or this
-            win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
+#             def calc_r(blob1, blob2):
+#                 """Calc euclidean distance between blob1 and blob2"""
+#                 y1, x1, s1, a1 = blob1
+#                 y2, x2, s2, a2 = blob2
+#                 return np.sqrt((y1 - y2) ** 2 + (x1 - x2) ** 2)
 
-        window = slice_maker(best, win_size)
+#             # calc distances
+#             r = np.array([calc_r(best, blob) for blob in blobs])
+#             # find min distances
+#             # remember that best is in blobs so 0 will be in the list
+#             # find the next value
+#             r.sort()
+#             try:
+#                 r_min = r[1]
+#             except IndexError:
+#                 # make r_min the size of the image
+#                 r_min = min(np.concatenate((np.array(self.data.shape) - best[:2], best[:2])))
+#             # now window size equals sqrt or this
+#             win_size = int(round(2 * (r_min / np.sqrt(2) - best[2] * 3)))
 
-        return window
+#         window = slice_maker(best, win_size)
 
-    def plot_all_windows(self):
-        """Plot all the windows so that user can choose favorite"""
-        windows = [self.find_window(i) for i in range(len(self.fits))]
-        fig, axs = display_grid({i: self.data[win] for i, win in enumerate(windows)})
-        return fig, axs
+#         return window
 
-
-class PSFProcMethods(object):
-    """A class specifically designed to mixin to add methods"""
-
-    def _inspect(self, psf):
-        """"""
-        otf = fftshift(fftn(ifftshift(psf)))
-        mip(psf)
-        slice_plot(abs(otf))
-        slice_plot(np.angle(otf))
-
-    def inspect_psf(self, blob_num=0):
-        """Inspect the psf assoicated with blob_num"""
-        psf = self.get_psf(blob_num)
-        self._inspect(psf)
-
-    def inspect_psf_clean(self, blob_num=0):
-        """Inspect the psf assoicated with blob_num"""
-        psf = self.clean_psf(blob_num)
-        self._inspect(psf)
+#     def plot_all_windows(self):
+#         """Plot all the windows so that user can choose favorite"""
+#         windows = [self.find_window(i) for i in range(len(self.fits))]
+#         fig, axs = display_grid({i: self.data[win] for i, win in enumerate(windows)})
+#         return fig, axs
 
 
-class PSF2DProcessor(PSFProcMethods, PSFFinder):
-    """An object for processing 2D PSFs and OTFs from 3D stacks"""
+# class PSFProcMethods(object):
+#     """A class specifically designed to mixin to add methods"""
 
-    def __init__(self, stack, wl=585, na=0.85, res=130, **kwargs):
-        """Find PSFs and turn them into OTFs
+#     def _inspect(self, psf):
+#         """"""
+#         otf = fftshift(fftn(ifftshift(psf)))
+#         mip(psf)
+#         slice_plot(abs(otf))
+#         slice_plot(np.angle(otf))
 
-        Parameters
-        ----------
-        stack : ndarray
-        na : float
-        pixsize : float
-        det_wl : float
-        """
-        assert stack.ndim == 3, "Stack is expected to be 3D"
-        psfwidth = wl / 4 / na / res
-        # use the max projection for peak finding
-        super().__init__(stack.max(0), psfwidth, **kwargs)
-        self.na = na
-        self.res = res
-        self.wl = wl
+#     def inspect_psf(self, blob_num=0):
+#         """Inspect the psf assoicated with blob_num"""
+#         psf = self.get_psf(blob_num)
+#         self._inspect(psf)
 
-    def get_psf(self, blob_num=0):
-        """make a 2d psf"""
-        psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
-        psf3d_corr = center_data(remove_bg(psf3d, 1.0))
-        psf2d = calc_infocus_psf(psf3d_corr)
-        return psf2d
-
-    def clean_psf(self, blob_num, **kwargs):
-        """"""
-        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res)
-        psf = psf2dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
-        return psf
+#     def inspect_psf_clean(self, blob_num=0):
+#         """Inspect the psf assoicated with blob_num"""
+#         psf = self.clean_psf(blob_num)
+#         self._inspect(psf)
 
 
-class PSF3DProcessor(PSFProcMethods, PSFFinder):
-    """An object for processing 2D PSFs and OTFs from 3D stacks"""
+# class PSF2DProcessor(PSFProcMethods, PSFFinder):
+#     """An object for processing 2D PSFs and OTFs from 3D stacks"""
 
-    def __init__(self, stack, wl=585, na=0.85, ni=1.0, res=130, zres=250, **kwargs):
-        """Find PSFs and turn them into OTFs
+#     def __init__(self, stack, wl=585, na=0.85, res=130, **kwargs):
+#         """Find PSFs and turn them into OTFs
 
-        Parameters
-        ----------
-        stack : ndarray
-        na : float
-        pixsize : float
-        det_wl : float
-        """
-        assert stack.ndim == 3, "Stack is expected to be 3D"
-        psfwidth = wl / 4 / na / res
-        # use the max projection for peak finding
-        super().__init__(stack.max(0), psfwidth, **kwargs)
-        self.na = na
-        self.res = res
-        self.wl = wl
-        self.ni = ni
-        self.zres = zres
+#         Parameters
+#         ----------
+#         stack : ndarray
+#         na : float
+#         pixsize : float
+#         det_wl : float
+#         """
+#         assert stack.ndim == 3, "Stack is expected to be 3D"
+#         psfwidth = wl / 4 / na / res
+#         # use the max projection for peak finding
+#         super().__init__(stack.max(0), psfwidth, **kwargs)
+#         self.na = na
+#         self.res = res
+#         self.wl = wl
 
-    def get_psf(self, blob_num=0):
-        """make a 2d psf"""
-        psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
-        psf3d_corr = center_data(remove_bg(psf3d, 1.0))
-        return psf3d_corr
+#     def get_psf(self, blob_num=0):
+#         """make a 2d psf"""
+#         psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
+#         psf3d_corr = center_data(remove_bg(psf3d, 1.0))
+#         psf2d = calc_infocus_psf(psf3d_corr)
+#         return psf2d
 
-    def clean_psf(self, blob_num, **kwargs):
-        """"""
-        exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res, ni=self.ni, zres=self.zres)
-        psf = psf3dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
-        return psf
+#     def clean_psf(self, blob_num, **kwargs):
+#         """"""
+#         exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res)
+#         psf = psf2dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
+#         return psf
+
+
+# class PSF3DProcessor(PSFProcMethods, PSFFinder):
+#     """An object for processing 2D PSFs and OTFs from 3D stacks"""
+
+#     def __init__(self, stack, wl=585, na=0.85, ni=1.0, res=130, zres=250, **kwargs):
+#         """Find PSFs and turn them into OTFs
+
+#         Parameters
+#         ----------
+#         stack : ndarray
+#         na : float
+#         pixsize : float
+#         det_wl : float
+#         """
+#         assert stack.ndim == 3, "Stack is expected to be 3D"
+#         psfwidth = wl / 4 / na / res
+#         # use the max projection for peak finding
+#         super().__init__(stack.max(0), psfwidth, **kwargs)
+#         self.na = na
+#         self.res = res
+#         self.wl = wl
+#         self.ni = ni
+#         self.zres = zres
+
+#     def get_psf(self, blob_num=0):
+#         """make a 2d psf"""
+#         psf3d = self.stack[[Ellipsis] + self.find_window(blob_num)]
+#         psf3d_corr = center_data(remove_bg(psf3d, 1.0))
+#         return psf3d_corr
+
+#     def clean_psf(self, blob_num, **kwargs):
+#         """"""
+#         exp_kwargs = dict(na=self.na, wl=self.wl, res=self.res, ni=self.ni, zres=self.zres)
+#         psf = psf3dclean(self.get_psf(blob_num), exp_kwargs, **kwargs)
+#         return psf
