@@ -2,31 +2,17 @@
 # -*- coding: utf-8 -*-
 # clean.py
 """
-Functions designed for cleaning PSFs/OTFs based on theoretical considerations
+Functions designed for cleaning PSFs/OTFs based on theoretical considerations.
 
 Copyright (c) 2016, David Hoffman
 """
 
 import numpy as np
-
-try:
-    import pyfftw
-    from pyfftw.interfaces.numpy_fft import (
-        fftshift,
-        ifftshift,
-        fftn,
-        ifftn,
-        fftfreq,
-    )
-
-    # Turn on the cache for optimum performance
-    pyfftw.interfaces.cache.enable()
-except ImportError:
-    from numpy.fft import fftshift, ifftshift, fftn, ifftn, fftfreq
+from numpy.fft import fftfreq, fftn, fftshift, ifftn, ifftshift
 
 
 def _make_kspace(data, res):
-    """Make coordinates in kspace"""
+    """Make coordinates in kspace."""
     assert data.ndim == len(res), "Resolution doesn't match shape"
     ks = tuple(fftshift(fftfreq(s, r)) for s, r in zip(data.shape, res))
     ktot = np.meshgrid(*ks, indexing="ij")
@@ -35,7 +21,7 @@ def _make_kspace(data, res):
 
 
 def _make_xspace(data, res):
-    """Make coordinates in x space"""
+    """Make coordinates in x space."""
     assert data.ndim == len(res), "Resolution doesn't match shape"
     xs = tuple((np.arange(s) - s / 2) * r for s, r in zip(data.shape, res))
     xtot = np.meshgrid(*xs, indexing="ij")
@@ -45,16 +31,16 @@ def _make_xspace(data, res):
 def calc_infocus_psf(psf):
     """Calculate the infocus psf using the projection-slice theorem.
 
-    https://en.wikipedia.org/wiki/Projection-slice_theorem"""
+    https://en.wikipedia.org/wiki/Projection-slice_theorem
+    """
     otf = fftshift(fftn(ifftshift(psf))).mean(0)
     infocus_psf = np.real(fftshift(ifftn(ifftshift(otf))))
     return infocus_psf
 
 
-# TODO: for both cleaning functions there should be an option to limit
-# the window size to the realspace mask.
+# TODO: for both cleaning functions there should be an option to limit the window size to the realspace mask.
 def psf2dclean(psf, exp_kwargs, ns=4):
-    """A function to clean up a 2d psf in both real space and frequency space
+    """Clean up a 2d psf in both real space and frequency space.
 
     This function makes a few assumptions about the psf, it has 
 
@@ -87,12 +73,7 @@ def psf2dclean(psf, exp_kwargs, ns=4):
 
 
 def psf3dclean(psf, exp_kwargs, ns=4):
-    """A function to clean up a 3D PSF in both real and reciprocal space
-
-    Parameters
-    ----------
-    """
-
+    """Clean up a 3D PSF in both real and reciprocal space."""
     # break out kwargs
     na, ni, wl, res, zres = (
         exp_kwargs["na"],

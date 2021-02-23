@@ -1,5 +1,4 @@
-"""
-LR deconvolution using cupy (or numpy)
+"""LR deconvolution using cupy (or numpy).
 
 based on code by David Hoffman
 https://github.com/david-hoffman/pyDecon
@@ -41,10 +40,8 @@ from numpy.fft import *
 
 
 def _prep_img_and_psf(image, psf):
-    """Do basic data checking, convert data to float, normalize psf and make
-    sure data are positive"""
-    assert psf.ndim == image.ndim, ("image and psf do not have the same number"
-                                    " of dimensions")
+    """Do basic data checking, convert data to float, normalize psf and make sure data are positive."""
+    assert psf.ndim == image.ndim, "image and psf do not have the same number" " of dimensions"
     image = image.astype(floattype)
     psf = psf.astype(floattype)
     # need to make sure both image and PSF are totally positive.
@@ -57,14 +54,14 @@ def _prep_img_and_psf(image, psf):
 
 
 def _calc_crop(s1, s2):
-    """Calc the cropping from the padding"""
+    """Calc the cropping from the padding."""
     a1 = abs(s1) if s1 < 0 else None
     a2 = s2 if s2 < 0 else None
     return slice(a1, a2, None)
 
 
 def _calc_pad(oldnum, newnum):
-    """ Calculate the proper padding for fft_pad
+    """Calculate the proper padding for fft_pad.
 
     We have three cases:
     old number even new number even
@@ -106,8 +103,8 @@ def _calc_pad(oldnum, newnum):
     return pad1, pad2
 
 
-def fft_pad(array, newshape=None, mode='median', **kwargs):
-    """Pad an array to prep it for fft"""
+def fft_pad(array, newshape=None, mode="median", **kwargs):
+    """Pad an array to prep it for fft."""
     # pull the old shape
     oldshape = array.shape
     if newshape is None:
@@ -124,13 +121,11 @@ def fft_pad(array, newshape=None, mode='median', **kwargs):
 
 
 def padding_slices(oldshape, newshape):
-    """This function takes the old shape and the new shape and calculates
-    the required padding or cropping.newshape
-
-    Can be used to generate the slices needed to undo fft_pad above"""
+    """Pad slices."""
     # generate pad widths from new shape
-    padding = tuple(_calc_pad(o, n) if n is not None else _calc_pad(o, o)
-                    for o, n in zip(oldshape, newshape))
+    padding = tuple(
+        _calc_pad(o, n) if n is not None else _calc_pad(o, o) for o, n in zip(oldshape, newshape)
+    )
     # Make a crop list, if any of the padding is negative
     slices = tuple(_calc_crop(s1, s2) for s1, s2 in padding)
     # leave 0 pad width where it was cropped
@@ -139,12 +134,12 @@ def padding_slices(oldshape, newshape):
 
 
 def _ensure_positive(data):
-    """Make sure data is positive"""
+    """Make sure data is positive."""
     return fmax(data, 0)
 
 
 def _zero2eps(data):
-    """Replace zeros and negative numbers with machine precision"""
+    """Replace zeros and negative numbers with machine precision."""
     return fmax(data, finfo(data.dtype).eps)
 
 
@@ -153,14 +148,13 @@ def _prep(img, psf):
     if psf.shape != img.shape:
         # its been assumed that the background of the psf has already been
         # removed and that the psf has already been centered
-        psf = fft_pad(psf, img.shape, mode='constant')
+        psf = fft_pad(psf, img.shape, mode="constant")
     otf = rfftn(ifftshift(psf))
     return img, psf, otf
 
 
 def _richardson_lucy(img, psf, otf, iterations=10, accelerate=True, **kwargs):
-    """
-    perform actual RL deconvolution
+    """Perform actual RL deconvolution.
 
     assumes that img, psf, and otf have been prepared.
 
@@ -187,8 +181,9 @@ def _richardson_lucy(img, psf, otf, iterations=10, accelerate=True, **kwargs):
         reblur = irfftn(otf * rfftn(t, t.shape, **kwargs), t.shape, **kwargs)
         reblur = _zero2eps(reblur)
         im_ratio = img / reblur
-        estimate = irfftn(conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs),
-                          im_ratio.shape, **kwargs)
+        estimate = irfftn(
+            conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs), im_ratio.shape, **kwargs
+        )
 
         # The below is to compensate for the slight shift that using np.conj
         # can introduce verus actually reversing the PSF. See notebooks for
@@ -208,8 +203,7 @@ def _richardson_lucy(img, psf, otf, iterations=10, accelerate=True, **kwargs):
 
 
 def richardson_lucy(img, psf, iterations=10, accelerate=True, **kwargs):
-    """
-    Richardson-Lucy Deconvolution
+    """Richardson-Lucy Deconvolution.
 
     Perform RL deconvolution with (optional) Andrew-Biggs acceleration
     on array img with point spread function psf. 

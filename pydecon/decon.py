@@ -8,38 +8,33 @@ Copyright (c) 2016, David Hoffman
 """
 
 import numpy as np
-
-try:
-    import pyfftw
-    from pyfftw.interfaces.numpy_fft import ifftshift, rfftn, irfftn
-
-    # Turn on the cache for optimum performance
-    pyfftw.interfaces.cache.enable()
-except ImportError:
-    from numpy.fft import ifftshift, rfftn, irfftn
-from .utils import _prep_img_and_psf, _ensure_positive, _zero2eps, _fft_pad
+from scipy.fftpack import next_fast_len
 import scipy.signal.signaltools as sig
-from scipy.signal import fftconvolve
-from scipy.ndimage import convolve
 import tqdm
+from numpy.fft import ifftshift, irfftn, rfftn
+from scipy.ndimage import convolve
+from scipy.signal import fftconvolve
+
+from .utils import _ensure_positive, _fft_pad, _prep_img_and_psf, _zero2eps
 
 
 def _get_fshape_slice(image, psf):
-    """This is necessary for the fast Richardson-Lucy Algorithm"""
+    # This is necessary for the fast Richardson-Lucy Algorithm.
     s1 = np.array(image.shape)
     s2 = np.array(psf.shape)
     assert (s1 >= s2).all()
     shape = s1 + s2 - 1
     # Speed up FFT by padding to optimal size for FFTPACK
-    fshape = [sig.fftpack.helper.next_fast_len(int(d)) for d in shape]
+    fshape = [next_fast_len(int(d)) for d in shape]
     fslice = tuple([slice(0, int(sz)) for sz in shape])
     return fshape, fslice
 
 
 def _rl_core_direct(image, psf, u_t):
-    """The core update step of the RL algorithm
+    """Core update step of the RL algorithm.
 
-    An exact version that uses direct convolution"""
+    An exact version that uses direct convolution
+    """
     reblur = convolve(u_t, psf, mode="reflect")
     reblur = _zero2eps(reblur)
     im_ratio = image / reblur
@@ -50,9 +45,10 @@ def _rl_core_direct(image, psf, u_t):
 
 
 def _rl_core_accurate(image, psf, u_t):
-    """The core update step of the RL algorithm
+    """Core update step of the RL algorithm.
 
-    An accurate version that """
+    An accurate version
+    """
     reblur = fftconvolve(u_t, psf, "same")
     reblur = _zero2eps(reblur)
     im_ratio = image / reblur
@@ -63,11 +59,12 @@ def _rl_core_accurate(image, psf, u_t):
 
 
 def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
-    """The core update step of the RL algorithm
+    """Core update step of the RL algorithm.
 
     This is a fast but inaccurate version modeled on matlab's version
     One improvement is to pad everything out when the shape isn't
-    good for fft."""
+    good for fft.
+    """
     reblur = irfftn(otf * rfftn(u_t, u_t.shape, **kwargs), u_t.shape, **kwargs)
     reblur = _zero2eps(reblur)
     im_ratio = image / reblur  # _zero2eps(array(0.0))
@@ -85,7 +82,7 @@ def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
 
 
 def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
-    """The core update step of the RL algorithm
+    """Core update step of the RL algorithm.
 
     This one is fast and accurate. It does proper fft convolution
     steps (based on fftconvolve from scipy.signal) but is optimized
@@ -94,7 +91,8 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
 
 
     We may be able to speed up the processing a little by avoiding all the
-    copies but it doesn't seem to be the bottle neck."""
+    copies but it doesn't seem to be the bottle neck.
+    """
     # reblur the estimate
     reblur = irfftn(rfftn(u_t, fshape, **kwargs) * otf, fshape, **kwargs)[fslice]
     reblur = sig._centered(reblur, image.shape)
@@ -109,10 +107,11 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
 
 
 def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
-    """Biggs-Andrews Acceleration
+    """Biggs-Andrews Acceleration.
 
     .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
-    Restoration Algorithms. Applied Optics 1997, 36 (8), 1766."""
+    Restoration Algorithms. Applied Optics 1997, 36 (8), 1766.
+    """
     # TODO: everything here can be wrapped in ne.evaluate
     if g_tm2 is not None:
         alpha = (g_tm1 * g_tm2).sum() / ((g_tm2 ** 2).sum() + np.finfo(g_tm1.dtype).eps)
@@ -137,8 +136,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
 def richardson_lucy(
     image, psf, iterations=10, prediction_order=1, core_type="matlab", init="matlab", **kwargs
 ):
-    """
-    Richardson-Lucy deconvolution.
+    """Richardson-Lucy deconvolution.
 
     Parameters
     ----------
@@ -160,9 +158,6 @@ def richardson_lucy(
     -------
     im_deconv : ndarray
        The deconvolved image.
-
-    Examples
-    --------
 
     Notes
     -----
@@ -195,7 +190,6 @@ def richardson_lucy(
     .. [1] http://en.wikipedia.org/wiki/Richardson%E2%80%93Lucy_deconvolution
     .. [2] Biggs, D. S. C.; Andrews, M. Acceleration of Iterative Image
     Restoration Algorithms. Applied Optics 1997, 36 (8), 1766.
-
     """
     # TODO: Make sure that data is properly padded for fast FFT numbers.
     # checked against matlab on 20160805 and agrees to within machine precision
@@ -215,7 +209,7 @@ def richardson_lucy(
     if core is _rl_core_fast_accurate:
         fshape, fslice = _get_fshape_slice(image, psf)
         otf = rfftn(psf, fshape, **kwargs)
-        rev_slice = [slice(None, None, -1)] * psf.ndim
+        rev_slice = (slice(None, None, -1),) * psf.ndim
         iotf = rfftn(psf[rev_slice], fshape, **kwargs)
         core_dict = dict(image=image, otf=otf, iotf=iotf, fshape=fshape, fslice=fslice)
     elif core is _rl_core_accurate or core is _rl_core_direct:
@@ -267,7 +261,7 @@ def richardson_lucy(
 
 
 def wiener_filter(image, psf, reg, **kwargs):
-    """Wiener Deconvolution
+    """Wiener Deconvolution.
 
     Parameters
     ----------
@@ -302,9 +296,9 @@ def wiener_filter(image, psf, reg, **kwargs):
 
 
 if __name__ == "__main__":
-    from skimage.data import hubble_deep_field
-    from skimage.color import rgb2gray
     from matplotlib import pyplot as plt
+    from skimage.color import rgb2gray
+    from skimage.data import hubble_deep_field
 
     plt.rcParams["image.cmap"] = "Greys_r"
     np.random.seed(12345)

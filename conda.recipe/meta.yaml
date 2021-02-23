@@ -26,8 +26,6 @@ requirements:
     {% endfor %}
 
 test:
-  requires:
-    - pytest
   imports:
     - pydecon
 

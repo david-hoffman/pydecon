@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # utils.py
 """
-Utility functions for deconvolution
+Utility functions for deconvolution.
 
 Copyright (c) 2016, David Hoffman
 """
@@ -12,9 +12,12 @@ from scipy.fftpack.helper import next_fast_len
 
 
 def radial_profile(data, center=None, binsize=1.0):
-    """Take the radial average of a 2D data array
+    """Take the radial average of a 2D data array.
 
     Adapted from http://stackoverflow.com/a/21242776/5030014
+
+    See https://github.com/keflavich/image_tools/blob/master/image_tools/radialprofile.py
+    for an alternative
 
     Parameters
     ----------
@@ -35,7 +38,7 @@ def radial_profile(data, center=None, binsize=1.0):
     Examples
     --------
     >>> radial_profile(np.ones((11, 11)))
-    (array([ 1.,  1.,  1.,  1.,  1.,  1.,  1.,  1.]), array([ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.]))
+    (array([1., 1., 1., 1., 1., 1., 1., 1.]), array([0., 0., 0., 0., 0., 0., 0., 0.]))
     """
     # test if the data is complex
     if np.iscomplexobj(data):
@@ -77,48 +80,15 @@ def radial_profile(data, center=None, binsize=1.0):
     return radial_mean, radial_std
 
 
-def _fft_pad(array, newshape=None, mode="median", **kwargs):
-    """Pad an array to prep it for fft"""
-    # pull the old shape
-    oldshape = array.shape
-    if newshape is None:
-        # update each dimension to a 5-smooth hamming number
-        newshape = tuple(next_fast_len(n) for n in oldshape)
-    else:
-        if isinstance(newshape, int):
-            newshape = tuple(newshape for n in oldshape)
-        else:
-            newshape = tuple(newshape)
-    # generate padding and slices
-    padding, slices = _padding_slices(oldshape, newshape)
-    return np.pad(array[slices], padding, mode=mode, **kwargs)
-
-
-def _padding_slices(oldshape, newshape):
-    """This function takes the old shape and the new shape and calculates
-    the required padding or cropping.newshape
-
-    Can be used to generate the slices needed to undo fft_pad above"""
-    # generate pad widths from new shape
-    padding = tuple(
-        _calc_pad(o, n) if n is not None else _calc_pad(o, o) for o, n in zip(oldshape, newshape)
-    )
-    # Make a crop list, if any of the padding is negative
-    slices = tuple(_calc_crop(s1, s2) for s1, s2 in padding)
-    # leave 0 pad width where it was cropped
-    padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
-    return padding, slices
-
-
 def _calc_crop(s1, s2):
-    """Calc the cropping from the padding"""
+    """Calc the cropping from the padding."""
     a1 = abs(s1) if s1 < 0 else None
     a2 = s2 if s2 < 0 else None
     return slice(a1, a2, None)
 
 
 def _calc_pad(oldnum, newnum):
-    """ Calculate the proper padding for fft_pad
+    """Calculate the proper padding for fft_pad.
 
     We have three cases:
     old number even new number even
@@ -160,24 +130,55 @@ def _calc_pad(oldnum, newnum):
     return pad1, pad2
 
 
-def set_pyfftw_threads(threads=1):
-    """A utility to set the number of threads to use in pyfftw"""
-    raise NotImplementedError
+def _padding_slices(oldshape, newshape):
+    """Calculate the required padding or cropping from the old shape and new shape.
+
+    Can be used to generate the slices needed to undo fft_pad above
+    """
+    # generate pad widths from new shape
+    padding = tuple(
+        _calc_pad(o, n) if n is not None else _calc_pad(o, o) for o, n in zip(oldshape, newshape)
+    )
+    # Make a crop list, if any of the padding is negative
+    slices = tuple(_calc_crop(s1, s2) for s1, s2 in padding)
+    # leave 0 pad width where it was cropped
+    padding = [(max(s1, 0), max(s2, 0)) for s1, s2 in padding]
+    return padding, slices
+
+
+def _fft_pad(array, newshape=None, mode="median", **kwargs):
+    """Pad an array to prep it for FFT."""
+    # pull the old shape
+    oldshape = array.shape
+    if newshape is None:
+        # update each dimension to a 5-smooth hamming number
+        newshape = tuple(next_fast_len(n) for n in oldshape)
+    else:
+        if hasattr(newshape, "__iter__"):
+            # are we iterable?
+            newshape = tuple(newshape)
+        elif isinstance(newshape, int) or np.issubdtype(newshape, np.integer):
+            # test for regular python int, then numpy ints
+            newshape = tuple(newshape for n in oldshape)
+        else:
+            raise ValueError(f"{newshape} is not a recognized shape")
+    # generate padding and slices
+    padding, slices = _padding_slices(oldshape, newshape)
+    return np.pad(array[slices], padding, mode=mode, **kwargs)
 
 
 def _ensure_positive(data):
-    """Make sure data is positive"""
+    """Make sure data is positive."""
     return np.fmax(data, 0)
 
 
 def _zero2eps(data):
-    """Replace zeros and negative numbers with machine precision"""
+    """Replace zeros and negative numbers with machine precision."""
     return np.fmax(data, np.finfo(data.dtype).eps)
 
 
 def _prep_img_and_psf(image, psf):
-    """Do basic data checking, convert data to float, normalize psf and make
-    sure data are positive"""
+    """Do basic data checking, convert data to float, normalize psf and make sure data are positive."""
     assert psf.ndim == image.ndim, "image and psf do not have the same number" " of dimensions"
     image = image.astype(np.float)
     psf = psf.astype(np.float)
@@ -191,9 +192,10 @@ def _prep_img_and_psf(image, psf):
 
 
 def radialavg(data):
-    """Radially average psf/otf
+    """Radially average psf/otf.
 
-    Note: it only really makes sense to radially average the OTF"""
+    Note: it only really makes sense to radially average the OTF
+    """
     if data.ndim < 2 or data.ndim > 3:
         raise ValueError("Data has wrong number of dimensions, ndim = {}".format(data.ndim))
     # find data maximum, then we use this as the center
@@ -214,11 +216,12 @@ def radialavg(data):
 
 # fixes fft issue
 def expand_radialavg(data):
-    """Expand a radially averaged data set to a full 2D or 3D psf/otf
+    """Expand a radially averaged data set to a full 2D or 3D psf/otf.
 
     Data will have maximum at center
 
-    Assumes standard numpy ordering of axes (i.e. zyx)"""
+    Assumes standard numpy ordering of axes (i.e. zyx)
+    """
     ndim = data.ndim
     if ndim < 1 or ndim > 2:
         raise ValueError("Data has wrong number of dimensions, ndim = {}".format(data.ndim))
