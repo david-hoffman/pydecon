@@ -46,7 +46,7 @@ def radial_profile(data, center=None, binsize=1.0):
         # imaginary parts and return the complex sum.
         real_prof, real_std = radial_profile(np.real(data), center, binsize)
         imag_prof, imag_std = radial_profile(np.imag(data), center, binsize)
-        return real_prof + imag_prof * 1j, np.sqrt(real_std ** 2 + imag_std ** 2)
+        return real_prof + imag_prof * 1j, np.sqrt(real_std**2 + imag_std**2)
         # or do mag and phase
         # mag_prof, mag_std = radial_profile(np.abs(data), center, binsize)
         # phase_prof, phase_std = radial_profile(np.angle(data), center, binsize)
@@ -61,13 +61,13 @@ def radial_profile(data, center=None, binsize=1.0):
         center = np.asarray(center)
     # calculate the radius from center
     idx2 = idx - center[(Ellipsis,) + (np.newaxis,) * (data.ndim)]
-    r = np.sqrt(np.sum([i ** 2 for i in idx2], 0))
+    r = np.sqrt(np.sum([i**2 for i in idx2], 0))
     # convert to int
-    r = np.round(r / binsize).astype(np.int)
+    r = np.round(r / binsize).astype(int)
     # sum the values at equal r
     tbin = np.bincount(r.ravel(), data.ravel())
     # sum the squares at equal r
-    tbin2 = np.bincount(r.ravel(), (data ** 2).ravel())
+    tbin2 = np.bincount(r.ravel(), (data**2).ravel())
     # find how many equal r's there are
     nr = np.bincount(r.ravel())
     # calculate the radial mean
@@ -75,7 +75,7 @@ def radial_profile(data, center=None, binsize=1.0):
     # have NaN for binsize != 1
     radial_mean = tbin / nr
     # calculate the radial std
-    radial_std = np.sqrt(tbin2 / nr - radial_mean ** 2)
+    radial_std = np.sqrt(tbin2 / nr - radial_mean**2)
     # return them
     return radial_mean, radial_std
 
@@ -231,7 +231,7 @@ def expand_radialavg(data):
     # start building the coordinate system
     idx = np.indices((datashape))
     # calculate the radius from center
-    r = np.sqrt(np.sum([i ** 2 for i in idx], 0))
+    r = np.sqrt(np.sum([i**2 for i in idx], 0))
     # figure out old r for the averaged data
     oldr = np.arange(half_yxsize)
     # final shape

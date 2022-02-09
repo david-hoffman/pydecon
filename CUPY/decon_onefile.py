@@ -206,12 +206,12 @@ def richardson_lucy(img, psf, iterations=10, accelerate=True, **kwargs):
     """Richardson-Lucy Deconvolution.
 
     Perform RL deconvolution with (optional) Andrew-Biggs acceleration
-    on array img with point spread function psf. 
+    on array img with point spread function psf.
 
     If numpy arrays are passed in as img, psf the deconvolution is performed
     using numpy (CPU computation), if cupy arrays are passed in, the deconvolution
     is performed using cupy (GPU computation using CUDA). Use cupy version >= 8.0
-    as it implements FFT plan chaching which significantly speeds up the computation. 
+    as it implements FFT plan chaching which significantly speeds up the computation.
 
     img: numpy or cupy array
     psf: numpy or cupy array

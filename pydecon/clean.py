@@ -42,7 +42,7 @@ def calc_infocus_psf(psf):
 def psf2dclean(psf, exp_kwargs, ns=4):
     """Clean up a 2d psf in both real space and frequency space.
 
-    This function makes a few assumptions about the psf, it has 
+    This function makes a few assumptions about the psf, it has
 
     Parameters
     ----------
@@ -110,7 +110,7 @@ def psf3dclean(psf, exp_kwargs, ns=4):
     kr_max = ni / wl  # the radius of the spherical shell
     kr_0 = na / wl  # the offset of the circle from the origin
     # z displacement of circle's center
-    z0 = np.sqrt(kr_max ** 2 - kr_0 ** 2)
+    z0 = np.sqrt(kr_max**2 - kr_0**2)
     cent_kr = kr - kr_0
     # calculate top half
     # onehalf = np.hypot(cent_kr, kz - z0 - z_offset * dkz) <= kr_max

@@ -27,7 +27,7 @@ def make_random_blob(ndims, size):
     center.shape += (1,) * ndims
     # calc distances
     distances = (mesh - center) / radii
-    r2 = (distances ** 2).sum(0)
+    r2 = (distances**2).sum(0)
     # return blob
     return np.exp(-r2)
 

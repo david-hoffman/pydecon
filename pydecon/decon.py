@@ -114,7 +114,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
     """
     # TODO: everything here can be wrapped in ne.evaluate
     if g_tm2 is not None:
-        alpha = (g_tm1 * g_tm2).sum() / ((g_tm2 ** 2).sum() + np.finfo(g_tm1.dtype).eps)
+        alpha = (g_tm1 * g_tm2).sum() / ((g_tm2**2).sum() + np.finfo(g_tm1.dtype).eps)
         alpha = max(min(alpha, 1), 0)
     else:
         alpha = 0
@@ -127,7 +127,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
             h2_t = u_t - 2 * u_tm1 + u_tm2
         else:
             h2_t = 0
-        u_tp1 = u_t + alpha * h1_t + alpha ** 2 / 2 * h2_t
+        u_tp1 = u_t + alpha * h1_t + alpha**2 / 2 * h2_t
         return u_tp1
     else:
         return u_t
@@ -290,7 +290,7 @@ def wiener_filter(image, psf, reg, **kwargs):
         # removed and that the psf has already been centered
         psf = _fft_pad(psf, image.shape, mode="constant")
     otf = rfftn(ifftshift(psf), **kwargs)
-    filt = np.conj(otf) / (abs(otf) ** 2 + reg ** 2)
+    filt = np.conj(otf) / (abs(otf) ** 2 + reg**2)
     im_deconv = np.irfftn(filt * rfftn(ifftshift(image), **kwargs), image.shape, **kwargs)
     return im_deconv
 
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     image *= 25.0
     x = np.linspace(-4, 4, 64)
     xx, yy = np.meshgrid(x, x)
-    psf = np.exp(-(xx ** 2 + yy ** 2)) * 100
+    psf = np.exp(-(xx**2 + yy**2)) * 100
     blur_image = convolve(image, psf / psf.sum(), mode="reflect")
     blur_image_noisy = np.random.poisson(blur_image)
     psf_noisy = np.random.poisson(psf)
