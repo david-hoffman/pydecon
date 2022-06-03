@@ -15,6 +15,8 @@ from numpy.fft import ifftshift, irfftn, rfftn
 from scipy.ndimage import convolve
 from scipy.signal import fftconvolve
 
+from loguru import logger
+
 from .utils import _ensure_positive, _fft_pad, _prep_img_and_psf, _zero2eps
 
 
@@ -58,19 +60,17 @@ def _rl_core_accurate(image, psf, u_t):
     return u_t * estimate
 
 
-def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
+def _rl_core_matlab(image, otf, psf, u_t):
     """Core update step of the RL algorithm.
 
     This is a fast but inaccurate version modeled on matlab's version
     One improvement is to pad everything out when the shape isn't
     good for fft.
     """
-    reblur = irfftn(otf * rfftn(u_t, u_t.shape, **kwargs), u_t.shape, **kwargs)
+    reblur = irfftn(otf * rfftn(u_t, u_t.shape), u_t.shape)
     reblur = _zero2eps(reblur)
     im_ratio = image / reblur  # _zero2eps(array(0.0))
-    estimate = irfftn(
-        np.conj(otf) * rfftn(im_ratio, im_ratio.shape, **kwargs), im_ratio.shape, **kwargs
-    )
+    estimate = irfftn(np.conj(otf) * rfftn(im_ratio, im_ratio.shape), im_ratio.shape)
     # The below is to compensate for the slight shift that using np.conj
     # can introduce verus actually reversing the PSF. See notebooks for
     # details.
@@ -81,7 +81,7 @@ def _rl_core_matlab(image, otf, psf, u_t, **kwargs):
     return u_t * estimate  # / (1 + np.sqrt(np.finfo(u_t.dtype).eps))
 
 
-def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
+def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice):
     """Core update step of the RL algorithm.
 
     This one is fast and accurate. It does proper fft convolution
@@ -94,13 +94,13 @@ def _rl_core_fast_accurate(image, otf, iotf, u_t, fshape, fslice, **kwargs):
     copies but it doesn't seem to be the bottle neck.
     """
     # reblur the estimate
-    reblur = irfftn(rfftn(u_t, fshape, **kwargs) * otf, fshape, **kwargs)[fslice]
+    reblur = irfftn(rfftn(u_t, fshape) * otf, fshape)[fslice]
     reblur = sig._centered(reblur, image.shape)
     reblur = _ensure_positive(reblur)
     # calculate the difference with the image
     im_ratio = image / reblur
     # convolve the difference ratio with the inverse psf
-    estimate = irfftn(rfftn(im_ratio, fshape, **kwargs) * iotf, fshape, **kwargs)[fslice]
+    estimate = irfftn(rfftn(im_ratio, fshape) * iotf, fshape)[fslice]
     estimate = sig._centered(estimate, image.shape)
     # multiply with the previous estimate to get the new estimate
     return u_t * estimate
@@ -134,7 +134,7 @@ def _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order):
 
 
 def richardson_lucy(
-    image, psf, iterations=10, prediction_order=1, core_type="matlab", init="matlab", **kwargs
+    image, psf, iterations=10, prediction_order=1, core_type="matlab", init="matlab"
 ):
     """Richardson-Lucy deconvolution.
 
@@ -208,9 +208,9 @@ def richardson_lucy(
     # set up the proper dict for the right core
     if core is _rl_core_fast_accurate:
         fshape, fslice = _get_fshape_slice(image, psf)
-        otf = rfftn(psf, fshape, **kwargs)
+        otf = rfftn(psf, fshape)
         rev_slice = (slice(None, None, -1),) * psf.ndim
-        iotf = rfftn(psf[rev_slice], fshape, **kwargs)
+        iotf = rfftn(psf[rev_slice], fshape)
         core_dict = dict(image=image, otf=otf, iotf=iotf, fshape=fshape, fslice=fslice)
     elif core is _rl_core_accurate or core is _rl_core_direct:
         core_dict = dict(image=image, psf=psf)
@@ -235,32 +235,38 @@ def richardson_lucy(
     # previous difference
     g_tm1 = g_tm2 = None
     for i in tqdm.trange(iterations):
-        # if prediction is requested perform it
-        if prediction_order:
-            # need to save prediction as intermediate value
-            y = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order)
-        else:
-            y = u_t
-        # update estimate and ensure positive
-        core_dict["u_t"] = _ensure_positive(y)
-        # call the update function
-        u_tp1 = core(**core_dict, **kwargs)
-        # update
-        # update g's
-        g_tm2 = g_tm1
-        # this is where the magic is, we need to compute from previous step
-        # which may have been augmented by acceleration
-        g_tm1 = u_tp1 - y
-        # now move u's along
-        # Here we don't want to update with accelerated version.
-        # why not? is this a mistake?
-        u_t, u_tm1, u_tm2 = u_tp1, u_t, u_tm1
+        try:
+            # if prediction is requested perform it
+            if prediction_order:
+                # need to save prediction as intermediate value
+                y = _rl_accelerate(g_tm1, g_tm2, u_t, u_tm1, u_tm2, prediction_order)
+            else:
+                y = u_t
+            # update estimate and ensure positive
+            core_dict["u_t"] = _ensure_positive(y)
+            # call the update function
+            u_tp1 = core(**core_dict)
+            # update
+            # update g's
+            g_tm2 = g_tm1
+            # this is where the magic is, we need to compute from previous step
+            # which may have been augmented by acceleration
+            g_tm1 = u_tp1 - y
+            # now move u's along
+            # Here we don't want to update with accelerated version.
+            # why not? is this a mistake?
+            u_t, u_tm1, u_tm2 = u_tp1, u_t, u_tm1
+        except KeyboardInterrupt as err:
+            # allow interactive users to stop early, but still return deconvolved output
+            logger.error(err)
+            logger.error(f"Returning data at iteration #{i}")
+            break
 
     # return final estimate
     return u_t
 
 
-def wiener_filter(image, psf, reg, **kwargs):
+def wiener_filter(image, psf, reg):
     """Wiener Deconvolution.
 
     Parameters
@@ -289,9 +295,9 @@ def wiener_filter(image, psf, reg, **kwargs):
         # its been assumed that the background of the psf has already been
         # removed and that the psf has already been centered
         psf = _fft_pad(psf, image.shape, mode="constant")
-    otf = rfftn(ifftshift(psf), **kwargs)
+    otf = rfftn(ifftshift(psf))
     filt = np.conj(otf) / (abs(otf) ** 2 + reg**2)
-    im_deconv = np.irfftn(filt * rfftn(ifftshift(image), **kwargs), image.shape, **kwargs)
+    im_deconv = np.irfftn(filt * rfftn(ifftshift(image)), image.shape)
     return im_deconv
 
 
