@@ -7,14 +7,14 @@ A short script to generate and output example data for the RL algorithm.
 Copyright (c) 2016, David Hoffman
 """
 
+import pathlib
 import time
 
 import numpy as np
 import tifffile as tif
-from pydecon.decon import richardson_lucy as rl
 from skimage.restoration import richardson_lucy as rl_skimage
 
-import pathlib
+from pydecon.decon import richardson_lucy as rl
 
 if __name__ == "__main__":
     thispath = pathlib.Path(__file__).parent

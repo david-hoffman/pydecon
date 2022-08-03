@@ -14,10 +14,11 @@ from itertools import product
 import numpy as np
 import tifffile as tif
 from matplotlib import pyplot as plt
-from pydecon.decon import richardson_lucy as rl
-from pydecon.utils import _ensure_positive
 from scipy.ndimage import convolve
 from skimage.restoration import richardson_lucy as rl_skimage
+
+from pydecon.decon import richardson_lucy as rl
+from pydecon.utils import _ensure_positive
 
 
 def gen_data(parent):

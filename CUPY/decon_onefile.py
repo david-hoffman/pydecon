@@ -22,8 +22,12 @@ cupy functions, which I learned about here
 
 """
 
-import scipy.fft
 import numpy as np
+import scipy.fft
+from numpy import clip, conj, finfo
+from numpy import float as floattype
+from numpy import fmax, pad, roll, square, zeros_like
+from numpy.fft import *
 
 # Note: all this is using numpy functions, but due to cupy implementing
 # the NEP-18 dispatch mechanism
@@ -33,10 +37,6 @@ import numpy as np
 
 # Note that cupy > 8.0.0 implements fft plan caching, which
 # gives an additional speedup
-
-from numpy import pad, fmax, clip, finfo, conj, roll, square, zeros_like
-from numpy import float as floattype
-from numpy.fft import *
 
 
 def _prep_img_and_psf(image, psf):

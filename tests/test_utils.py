@@ -7,11 +7,13 @@ Test utils.
 Copyright (c) 2021, David Hoffman
 """
 
-import pytest
-import numpy as np
-from numpy.testing import assert_allclose
 import unittest
-from pydecon.utils import _ensure_positive, radialavg, expand_radialavg
+
+import numpy as np
+import pytest
+from numpy.testing import assert_allclose
+
+from pydecon.utils import _ensure_positive, expand_radialavg, radialavg
 
 
 def make_random_blob(ndims, size):

@@ -8,14 +8,13 @@ Copyright (c) 2016, David Hoffman
 """
 
 import numpy as np
-from scipy.fftpack import next_fast_len
 import scipy.signal.signaltools as sig
 import tqdm
-from numpy.fft import ifftshift, irfftn, rfftn
+from loguru import logger
+from numpy.fft import fftshift, ifftshift, irfftn, rfftn
+from scipy.fftpack import next_fast_len
 from scipy.ndimage import convolve
 from scipy.signal import fftconvolve
-
-from loguru import logger
 
 from .utils import _ensure_positive, _fft_pad, _prep_img_and_psf, _zero2eps
 
@@ -297,8 +296,10 @@ def wiener_filter(image, psf, reg):
         psf = _fft_pad(psf, image.shape, mode="constant")
     otf = rfftn(ifftshift(psf))
     filt = np.conj(otf) / (abs(otf) ** 2 + reg**2)
-    im_deconv = np.irfftn(filt * rfftn(ifftshift(image)), image.shape)
-    return im_deconv
+    # normalize
+    filt /= np.sqrt((abs(filt) ** 2).sum())
+    im_deconv = fftshift(irfftn(filt * rfftn(ifftshift(image)), image.shape))
+    return im_deconv / np.sqrt(reg)
 
 
 if __name__ == "__main__":
